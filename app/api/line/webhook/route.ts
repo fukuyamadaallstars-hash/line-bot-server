@@ -1,14 +1,11 @@
 import { NextResponse } from 'next/server';
-import { MessagingApiClient, MessagingApiBlobClient } from '@line/bot-sdk';
+import { MessagingApiClient } from '@line/bot-sdk';
 import OpenAI from 'openai';
-import crypto from 'crypto';
 
-// 環境変数の読み込み
 const channelSecret = process.env.LINE_CHANNEL_SECRET || '';
 const channelAccessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN || '';
 const openaiApiKey = process.env.OPENAI_API_KEY || '';
 
-// LINEクライアントとOpenAIクライアントの初期化
 const lineClient = new MessagingApiClient({
     channelAccessToken: channelAccessToken
 });
@@ -20,42 +17,60 @@ const openai = new OpenAI({
 export async function POST(request: Request) {
     try {
         const body = await request.text();
-        const signature = request.headers.get('x-line-signature') || '';
+        console.log('--- 1. 受信データ ---', body);
 
-        // 1. 本人確認（署名検証）
-        // 本番環境では必須ですが、まずは動作優先のため簡易的なチェックに留めます
-        // 本来は crypto を使って検証しますが、ここでは一旦ログ出力のみにしています
+        const json = JSON.parse(body);
+        const events = json.events;
 
-        const events = JSON.parse(body).events;
+        if (!events || events.length === 0) {
+            return NextResponse.json({ message: "No events" });
+        }
 
-        // 2. 各イベント（メッセージ送信など）を処理
         for (const event of events) {
             if (event.type === 'message' && event.message.type === 'text') {
                 const userMessage = event.message.text;
+                console.log('--- 2. ユーザーの質問 ---', userMessage);
 
-                // 3. OpenAIで返答を生成
-                const completion = await openai.chat.completions.create({
-                    messages: [{ role: "user", content: userMessage }],
-                    model: "gpt-3.5-turbo", // または gpt-4
-                });
+                try {
+                    console.log('--- 3. OpenAIに問い合わせ中... ---');
+                    const completion = await openai.chat.completions.create({
+                        messages: [{ role: "user", content: userMessage }],
+                        model: "gpt-3.5-turbo",
+                    });
 
-                const aiResponse = completion.choices[0].message.content || '申し訳ありません、返答を作成できませんでした。';
+                    const aiResponse = completion.choices[0].message.content || '返答なし';
+                    console.log('--- 4. AIの回答 ---', aiResponse);
 
-                // 4. LINEに返信する
-                await lineClient.replyMessage({
-                    replyToken: event.replyToken,
-                    messages: [{ type: 'text', text: aiResponse }],
-                });
+                    console.log('--- 5. LINEに返信中... ---');
+                    await lineClient.replyMessage({
+                        replyToken: event.replyToken,
+                        messages: [{ type: 'text', text: aiResponse }],
+                    });
+                    console.log('--- 6. 返信完了！ ---');
+
+                } catch (innerError: any) {
+                    console.error('!!! 処理中のエラー !!!', innerError.message);
+
+                    // LINEにエラー内容を返してデバッグする
+                    try {
+                        await lineClient.replyMessage({
+                            replyToken: event.replyToken,
+                            messages: [{ type: 'text', text: `ボット内部でエラーが発生しました: ${innerError.message}` }],
+                        });
+                    } catch (lineErr) {
+                        console.error('LINEへのエラー送信にも失敗:', lineErr);
+                    }
+                }
             }
         }
 
         return NextResponse.json({ message: "OK" });
     } catch (error: any) {
-        console.error('Error handling LINE webhook:', error);
+        console.error('!!! 全体的なエラー !!!', error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }
 
 export async function GET() {
-    return NextResponse.json({ status: "OK", message: "AI Bot is ready!" });
+    return NextResponse.json({ status: "OK", message: "Diagnosis mode is active" });
 }
