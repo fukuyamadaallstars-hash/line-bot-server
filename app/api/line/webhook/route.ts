@@ -2,23 +2,25 @@ import { NextResponse } from 'next/server';
 import * as line from '@line/bot-sdk';
 import OpenAI from 'openai';
 
-// 環境変数の取得
-const channelAccessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN || '';
-const openaiApiKey = process.env.OPENAI_API_KEY || '';
-
-// LINEクライアントの初期化（最新の書き方に修正）
-const lineConfig = {
-    channelAccessToken: channelAccessToken,
-};
-
-const lineClient = new line.messagingApi.MessagingApiClient(lineConfig);
-
-const openai = new OpenAI({
-    apiKey: openaiApiKey,
-});
-
 export async function POST(request: Request) {
     try {
+        // 実行時に環境変数を取得するように修正（ビルド時のキャッシュを回避）
+        const channelAccessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN || '';
+        const openaiApiKey = process.env.OPENAI_API_KEY || '';
+
+        // デバッグ用ログ
+        if (!openaiApiKey) {
+            console.error('--- OPENAI_API_KEY is missing in process.env ---');
+        }
+
+        const lineClient = new line.messagingApi.MessagingApiClient({
+            channelAccessToken: channelAccessToken
+        });
+
+        const openai = new OpenAI({
+            apiKey: openaiApiKey,
+        });
+
         const body = await request.text();
         const json = JSON.parse(body);
         const events = json.events;
@@ -31,7 +33,6 @@ export async function POST(request: Request) {
             if (event.type === 'message' && event.message.type === 'text') {
                 const userMessage = event.message.text;
 
-                // OpenAIで返答生成
                 const completion = await openai.chat.completions.create({
                     messages: [{ role: "user", content: userMessage }],
                     model: "gpt-3.5-turbo",
@@ -39,7 +40,6 @@ export async function POST(request: Request) {
 
                 const aiResponse = completion.choices[0].message.content || '返答を作成できませんでした。';
 
-                // LINEに返信
                 await lineClient.replyMessage({
                     replyToken: event.replyToken,
                     messages: [{ type: 'text', text: aiResponse }],
@@ -49,11 +49,11 @@ export async function POST(request: Request) {
 
         return NextResponse.json({ message: "OK" });
     } catch (error: any) {
-        console.error('Error:', error);
+        console.error('Error detail:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }
 
 export async function GET() {
-    return NextResponse.json({ status: "OK", message: "AI Bot logic updated!" });
+    return NextResponse.json({ status: "OK", message: "Environment test version active" });
 }
