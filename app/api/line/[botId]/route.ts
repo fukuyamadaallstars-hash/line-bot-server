@@ -25,7 +25,7 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
     try {
         const completion = await openai.chat.completions.create({
             messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userMessage }],
-            model: "gpt-3.5-turbo",
+            model: "gpt-4o-mini",
         });
 
         const aiResponse = completion.choices[0].message.content || '返答を作成できませんでした。';
