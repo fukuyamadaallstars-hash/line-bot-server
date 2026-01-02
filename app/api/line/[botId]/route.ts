@@ -66,61 +66,28 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
     const eventId = event.webhookEventId;
 
     try {
-        // 1. 重複チェック (Idempotency)
-        // LINEは返信が遅いと再送してくるので、同じeventIdならスキップする機能
+        // 1. 重複チェック
         const { data: existingLog } = await supabase.from('usage_logs').select('id').eq('tenant_id', tenantId).eq('event_id', eventId).maybeSingle();
-        if (existingLog) {
-            console.log(`[${tenantId}] 重複リクエストのためスキップ: ${eventId}`);
-            return;
-        }
+        if (existingLog) return;
 
-        // 2. ユーザーの状態を取得 (なければ作成)
-        let { data: user, error: fetchError } = await supabase
-            .from('users')
-            .select('*')
-            .eq('tenant_id', tenantId)
-            .eq('user_id', userId)
-            .maybeSingle();
-
-        if (fetchError) {
-            console.error(`[${tenantId}] ユーザー取得エラー:`, fetchError);
-            return;
-        }
-
+        // 2. ユーザー状態取得
+        let { data: user } = await supabase.from('users').select('*').eq('tenant_id', tenantId).eq('user_id', userId).maybeSingle();
         if (!user) {
-            console.log(`[${tenantId}] 新規ユーザー登録: ${userId}`);
-            const { data: newUser, error: insertError } = await supabase
-                .from('users')
-                .insert({ tenant_id: tenantId, user_id: userId, display_name: 'LINE User', is_handoff_active: false })
-                .select()
-                .single();
-
-            if (insertError) {
-                console.error(`[${tenantId}] ユーザー登録エラー:`, insertError);
-                return;
-            }
+            const { data: newUser } = await supabase.from('users').insert({ tenant_id: tenantId, user_id: userId, display_name: 'LINE User' }).select().single();
             user = newUser;
         }
 
-        console.log(`[${tenantId}] ユーザー状態確認 - ID: ${userId}, 有人モード: ${user.is_handoff_active}`);
-
-        // 3. 有人切替中（Handoff）ならAIは完全沈黙
         if (user.is_handoff_active === true) {
-            console.log(`[${tenantId}] 有人対応中のためAI回答をスキップします: ${userId}`);
+            console.log(`[${tenantId}] 有人対応中のため沈黙: ${userId}`);
             return;
         }
 
-        // 4. 有人切替キーワードの検知
+        // 3. 有人切替チェック
         const check = checkSensitivy(userMessage);
         if (check.found && check.level === 'critical') {
-            console.log(`[${tenantId}] 有人切替トリガー検知: ${userMessage}`);
-
-            // DBを有人モードに更新
             await supabase.from('users').update({ is_handoff_active: true, status: 'attention_required' }).eq('tenant_id', tenantId).eq('user_id', userId);
-            // チケット作成 & 通知
             await supabase.from('tickets').insert({ tenant_id: tenantId, user_id: userId, last_message_summary: userMessage, priority: 'high' });
             await sendNotification(tenant.notification_webhook_url, tenantId, `有人切替が必要です: ${userMessage}`);
-
             await lineClient.replyMessage({
                 replyToken: event.replyToken,
                 messages: [{ type: 'text', text: '内容を承知いたしました。担当者が直接確認するため、AIの自動回答を停止しました。折り返しご連絡いたしますので、少々お待ちください。' }],
@@ -128,17 +95,43 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
             return;
         }
 
-        // 5. AI返答処理 (通常モード)
+        // 4. ナレッジベース（RAG）の検索
         const openai = new OpenAI({ apiKey: openaiApiKey });
+
+        // ユーザーの質問をベクトル化
+        const embeddingRes = await openai.embeddings.create({
+            model: "text-embedding-3-small",
+            input: userMessage,
+        });
+        const queryEmbedding = embeddingRes.data[0].embedding;
+
+        // 関連する知識をDBから3件探す
+        const { data: matchedKnowledge } = await supabase.rpc('match_knowledge', {
+            query_embedding: queryEmbedding,
+            match_threshold: 0.5,
+            match_count: 3,
+            p_tenant_id: tenantId,
+        });
+
+        let contextText = "";
+        if (matchedKnowledge && matchedKnowledge.length > 0) {
+            contextText = "\n\n【参考資料】\n" + matchedKnowledge.map((k: any) => `- ${k.content}`).join("\n");
+            console.log(`[${tenantId}] ナレッジヒット: ${matchedKnowledge.length}件`);
+        }
+
+        // 5. AI返答処理 (知識を注入)
         const completion = await openai.chat.completions.create({
-            messages: [{ role: "system", content: tenant.system_prompt }, { role: "user", content: userMessage }],
+            messages: [
+                { role: "system", content: tenant.system_prompt + "\n以下の資料を参考にして答えてください。資料にない場合は「わかりかねます」と答えてください。" + contextText },
+                { role: "user", content: userMessage }
+            ],
             model: "gpt-4o-mini",
         });
 
         const aiResponse = completion.choices[0].message.content || '返答を作成できませんでした。';
         await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: aiResponse }] });
 
-        // 成功ログ保存 (eventIdを保存することで次回の重複を防止)
+        // 成功ログ保存
         await supabase.from('usage_logs').insert({
             tenant_id: tenantId, user_id: userId, event_id: eventId,
             message_type: 'text', token_usage: completion.usage?.total_tokens || 0,
@@ -173,5 +166,5 @@ export async function POST(request: Request, { params }: { params: Promise<{ bot
 }
 
 export async function GET() {
-    return NextResponse.json({ status: "OK", message: "Handoff Logic Debuggable Active" });
+    return NextResponse.json({ status: "OK", message: "RAG Enabled Router Active" });
 }
