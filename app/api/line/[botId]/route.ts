@@ -188,7 +188,18 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
                     messages.push(choice.message);
                     messages.push({ role: "tool", content: toolResult, tool_call_id: toolCall.id });
                 }
-                const secondResponse = await openai.chat.completions.create({ messages, model: "gpt-4o-mini" });
+                // 2回目の呼び出し時も、同様に条件分岐済みのパラメータを使用する(ただしmessagesは更新後のもの)
+                // もし2回目以降でToolを使わせたくない場合は tools を外すが、会話の流れ上は一貫性を持たせるため、
+                // 基本的には同じ設定で良いが、念のため再定義する。
+                const secondParams: any = {
+                    model: "gpt-4o-mini",
+                    messages,
+                };
+                if (tenant.google_sheet_id) {
+                    secondParams.tools = tools;
+                    secondParams.tool_choice = "auto";
+                }
+                const secondResponse = await openai.chat.completions.create(secondParams);
                 aiResponse = secondResponse.choices[0].message.content;
             }
         }
