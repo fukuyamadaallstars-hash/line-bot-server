@@ -130,7 +130,6 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
             return;
         }
 
-        // RAG検索
         const openai = new OpenAI({ apiKey: openaiApiKey });
         const embeddingRes = await openai.embeddings.create({ model: "text-embedding-3-small", input: userMessage });
         const { data: matchedKnowledge } = await supabase.rpc('match_knowledge', {
@@ -156,22 +155,20 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
 
             if (sheets && sheetId) {
                 for (const toolCall of choice.message.tool_calls) {
-                    const args = JSON.parse(toolCall.function.arguments);
+                    // ★ TypeScript Error Fix: Explicitly cast to any to access function properties
+                    const tc = toolCall as any;
+                    const args = JSON.parse(tc.function.arguments);
                     let toolResult = "";
 
-                    if (toolCall.function.name === 'check_schedule') {
-                        // スプレッドシート読み込み (個人情報保護のため名前は伏せる)
+                    if (tc.function.name === 'check_schedule') {
                         const resp = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: 'Sheet1!A:D' });
                         const rows = resp.data.values || [];
-
-                        // AIに渡すのは「時間」と「予約済フラグ」のみ。個人名は渡さない。
                         const targeted = rows
                             .filter(row => row[0] === args.date)
                             .map(row => `${row[1]} : 予約済`);
-
                         toolResult = targeted.length > 0 ? "【現在の予約状況】\n" + targeted.join("\n") : "その日の予約は入っていません。";
                     }
-                    else if (toolCall.function.name === 'add_reservation') {
+                    else if (tc.function.name === 'add_reservation') {
                         await sheets.spreadsheets.values.append({
                             spreadsheetId: sheetId, range: 'Sheet1!A:D', valueInputOption: 'USER_ENTERED',
                             requestBody: { values: [[args.date, args.time, args.name, args.details || '']] }
