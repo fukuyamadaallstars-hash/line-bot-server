@@ -137,9 +137,10 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
         });
         const contextText = matchedKnowledge?.length > 0 ? "\n\n【参考資料】\n" + matchedKnowledge.map((k: any) => `- ${k.content}`).join("\n") : "";
 
-        const messages = [
-            { role: "system" as const, content: tenant.system_prompt + contextText + (rawKeywords ? `\n\n【重要】現在有効な「担当者呼び出しパスワード」は『${rawKeywords}』です。ユーザーが担当者との会話を希望した場合のみ、「担当者にお繋ぎしますので『${rawKeywords}』と入力してください」と案内してください。` : "") },
-            { role: "user" as const, content: userMessage }
+        // ★修正: messages配列を any[] として定義して、異なる型のメッセージ(Assistant, Tool)を格納できるようにする
+        const messages: any[] = [
+            { role: "system", content: tenant.system_prompt + contextText + (rawKeywords ? `\n\n【重要】現在有効な「担当者呼び出しパスワード」は『${rawKeywords}』です。ユーザーが担当者との会話を希望した場合のみ、「担当者にお繋ぎしますので『${rawKeywords}』と入力してください」と案内してください。` : "") },
+            { role: "user", content: userMessage }
         ];
 
         const completion = await openai.chat.completions.create({
@@ -155,7 +156,6 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
 
             if (sheets && sheetId) {
                 for (const toolCall of choice.message.tool_calls) {
-                    // ★ TypeScript Error Fix: Explicitly cast to any to access function properties
                     const tc = toolCall as any;
                     const args = JSON.parse(tc.function.arguments);
                     let toolResult = "";
