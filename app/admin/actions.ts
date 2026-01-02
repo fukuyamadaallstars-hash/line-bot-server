@@ -35,10 +35,18 @@ export async function updateTenant(formData: FormData) {
     const system_prompt = formData.get('system_prompt') as string;
     const is_active = formData.get('is_active') === 'on';
     const monthly_token_limit = parseInt(formData.get('monthly_token_limit') as string) || 0;
+    const handoff_keywords = formData.get('handoff_keywords') as string;
 
     const { error } = await supabase
         .from('tenants')
-        .update({ display_name, system_prompt, is_active, monthly_token_limit, updated_at: new Date().toISOString() })
+        .update({
+            display_name,
+            system_prompt,
+            is_active,
+            monthly_token_limit,
+            handoff_keywords,
+            updated_at: new Date().toISOString()
+        })
         .eq('tenant_id', tenant_id);
 
     if (error) throw new Error('更新に失敗しました');

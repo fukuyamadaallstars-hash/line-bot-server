@@ -119,7 +119,22 @@ export default async function AdminPage() {
                                 </div>
                             </div>
 
+                            <div style={{ marginBottom: '16px' }}>
+                                <label className="input-label">有人切替キーワード (カンマ区切り)</label>
+                                <input
+                                    name="handoff_keywords"
+                                    defaultValue={tenant.handoff_keywords || '担当者,オペレーター,返金,クレーム'}
+                                    className="kb-input"
+                                    style={{ width: '100%' }}
+                                    placeholder="例: 担当者,オペレーター,予約変更"
+                                />
+                                <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '4px' }}>
+                                    ※これらの単語が含まれると、AIが停止し通知が飛びます。
+                                </p>
+                            </div>
+
                             <textarea name="system_prompt" defaultValue={tenant.system_prompt} className="prompt-textarea" style={{ marginBottom: '12px' }} />
+
                             <button type="submit" className="btn btn-primary" style={{ width: '100%', marginBottom: '24px' }}>設定を保存</button>
                         </form>
 

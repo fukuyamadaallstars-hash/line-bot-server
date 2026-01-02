@@ -23,18 +23,21 @@ function validateSignature(body: string, channelSecret: string, signature: strin
     return hash === signature;
 }
 
-// 個人情報・NGキーワードチェック
-function checkSensitivy(text: string): { type: string; found: boolean; level: 'warning' | 'critical' } {
+// 個人情報・NGキーワードチェック (DBからの動的リスト対応)
+function checkSensitivy(text: string, customKeywords: string[]): { type: string; found: boolean; level: 'warning' | 'critical' } {
     const piiPatterns = [
         { type: 'Phone', regex: /(\d{2,4}-\d{2,4}-\d{4})|(\d{10,11})/ },
         { type: 'Email', regex: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/ }
     ];
-    const criticalKeywords = ['担当者', 'オペレーター', '人間', 'わかってない', '返金', 'クレーム', '弁護士'];
+
+    // デフォルト（DBが空の場合の安全策）
+    const defaultKeywords = ['担当者', 'オペレーター', '返金', 'クレーム'];
+    const targetKeywords = customKeywords.length > 0 ? customKeywords : defaultKeywords;
 
     for (const pattern of piiPatterns) {
         if (pattern.regex.test(text)) return { type: 'PII (' + pattern.type + ')', found: true, level: 'warning' };
     }
-    for (const word of criticalKeywords) {
+    for (const word of targetKeywords) {
         if (text.includes(word)) return { type: 'Critical Keyword: ' + word, found: true, level: 'critical' };
     }
 
@@ -82,75 +85,54 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
             return;
         }
 
-        // 3. 有人切替チェック
-        const check = checkSensitivy(userMessage);
+        // ★ DBからキーワードリストを取得（カンマ区切りを配列に変換）
+        const rawKeywords = tenant.handoff_keywords || "";
+        const customKeywords = rawKeywords.split(',').map((k: string) => k.trim()).filter((k: string) => k.length > 0);
+
+        // 3. 有人切替チェック (動的リスト使用)
+        const check = checkSensitivy(userMessage, customKeywords);
+
         if (check.found && check.level === 'critical') {
             await supabase.from('users').update({ is_handoff_active: true, status: 'attention_required' }).eq('tenant_id', tenantId).eq('user_id', userId);
             await supabase.from('tickets').insert({ tenant_id: tenantId, user_id: userId, last_message_summary: userMessage, priority: 'high' });
-            await sendNotification(tenant.notification_webhook_url, tenantId, `有人切替が必要です: ${userMessage}`);
+            await sendNotification(tenant.notification_webhook_url, tenantId, `有人切替トリガー: ${userMessage}`);
             await lineClient.replyMessage({
                 replyToken: event.replyToken,
-                messages: [{ type: 'text', text: '内容を承知いたしました。担当者が直接確認するため、AIの自動回答を停止しました。折り返しご連絡いたしますので、少々お待ちください。' }],
+                messages: [{ type: 'text', text: '担当者が直接確認するため、AIの自動回答を停止しました。折り返しご連絡いたしますので、少々お待ちください。' }],
             });
             return;
         }
 
-        // 4. トークン使用量の上限チェック (Cost Control)
+        // 4. トークン使用量の上限チェック
         const now = new Date();
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-
-        // 今月の使用量を集計
-        const { data: usageData } = await supabase
-            .from('usage_logs')
-            .select('token_usage')
-            .eq('tenant_id', tenantId)
-            .gte('created_at', startOfMonth);
-
+        const { data: usageData } = await supabase.from('usage_logs').select('token_usage').eq('tenant_id', tenantId).gte('created_at', startOfMonth);
         const currentTotal = usageData?.reduce((sum: number, log: any) => sum + (log.token_usage || 0), 0) || 0;
-        const limit = tenant.monthly_token_limit || 0; // 0なら無制限扱いにすることも可能だが、今回は安全のため設定必須とする
+        const limit = tenant.monthly_token_limit || 0;
 
         if (limit > 0 && currentTotal >= limit) {
-            console.warn(`[${tenantId}] Token Limit Exceeded: ${currentTotal} / ${limit}`);
-            await lineClient.replyMessage({
-                replyToken: event.replyToken,
-                messages: [{ type: 'text', text: '申し訳ありません。今月のAI利用枠が上限に達しました。来月までお待ちいただくか、管理者へお問い合わせください。' }],
-            });
-            // ログには「制限到達」として残す
-            await supabase.from('usage_logs').insert({
-                tenant_id: tenantId, user_id: userId, event_id: eventId,
-                message_type: 'text', status: 'limit_exceeded', error_message: 'Monthly token limit reached'
-            });
+            await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '今月のAI利用枠が上限に達しました。' }] });
             return;
         }
 
         // 5. ナレッジベース（RAG）の検索
         const openai = new OpenAI({ apiKey: openaiApiKey });
-
-        // ユーザーの質問をベクトル化
-        const embeddingRes = await openai.embeddings.create({
-            model: "text-embedding-3-small",
-            input: userMessage,
-        });
+        const embeddingRes = await openai.embeddings.create({ model: "text-embedding-3-small", input: userMessage });
         const queryEmbedding = embeddingRes.data[0].embedding;
 
-        // 関連する知識をDBから3件探す
         const { data: matchedKnowledge } = await supabase.rpc('match_knowledge', {
-            query_embedding: queryEmbedding,
-            match_threshold: 0.5,
-            match_count: 3,
-            p_tenant_id: tenantId,
+            query_embedding: queryEmbedding, match_threshold: 0.5, match_count: 3, p_tenant_id: tenantId
         });
 
         let contextText = "";
         if (matchedKnowledge && matchedKnowledge.length > 0) {
             contextText = "\n\n【参考資料】\n" + matchedKnowledge.map((k: any) => `- ${k.content}`).join("\n");
-            console.log(`[${tenantId}] ナレッジヒット: ${matchedKnowledge.length}件`);
         }
 
-        // 5. AI返答処理 (知識を注入)
+        // 6. AI返答処理
         const completion = await openai.chat.completions.create({
             messages: [
-                { role: "system", content: tenant.system_prompt + "\n以下の資料を参考にして答えてください。資料にない場合は「わかりかねます」と答えてください。" + contextText },
+                { role: "system", content: tenant.system_prompt + "\n参考資料がある場合はそれに基づいて答えてください。" + contextText },
                 { role: "user", content: userMessage }
             ],
             model: "gpt-4o-mini",
@@ -194,5 +176,5 @@ export async function POST(request: Request, { params }: { params: Promise<{ bot
 }
 
 export async function GET() {
-    return NextResponse.json({ status: "OK", message: "RAG Enabled Router Active" });
+    return NextResponse.json({ status: "OK", message: "Pro SaaS Router Active" });
 }
