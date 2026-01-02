@@ -11,13 +11,20 @@ function getSupabaseAdmin() {
     return createClient(supabaseUrl, supabaseKey);
 }
 
-async function getTenantsWithKB() {
+async function getTenantsWithStats() {
     const supabase = getSupabaseAdmin();
     if (!supabase) return [];
 
-    // テナントと、それに紐づくナレッジをまとめて取得
     const { data: tenants } = await supabase.from('tenants').select('*, knowledge_base(*)').order('created_at', { ascending: false });
-    return tenants || [];
+    if (!tenants) return [];
+
+    return await Promise.all(tenants.map(async (tenant) => {
+        const { count } = await supabase.from('usage_logs').select('*', { count: 'exact', head: true }).eq('tenant_id', tenant.tenant_id).eq('status', 'success');
+        const { data: usage } = await supabase.from('usage_logs').select('token_usage').eq('tenant_id', tenant.tenant_id);
+        const totalTokens = usage?.reduce((acc, curr) => acc + (curr.token_usage || 0), 0) || 0;
+
+        return { ...tenant, stats: { messageCount: count || 0, totalTokens } };
+    }));
 }
 
 export default async function AdminPage(props: {
@@ -31,30 +38,50 @@ export default async function AdminPage(props: {
         return (
             <div style={{ padding: '100px 20px', textAlign: 'center', fontFamily: 'sans-serif' }}>
                 <h1>401 Unauthorized</h1>
-                <p>正し管理用URLからアクセスしてください。</p>
+                <p>正しい管理用URLからアクセスしてください。</p>
             </div>
         );
     }
 
-    const tenants = await getTenantsWithKB();
+    const tenants = await getTenantsWithStats();
 
     return (
         <div className="dashboard-container">
             <header className="header">
                 <div>
                     <h1>Bot Admin Console</h1>
-                    <p style={{ color: 'var(--text-muted)', marginTop: '4px' }}>知識（RAG）と設定の管理</p>
+                    <p style={{ color: 'var(--text-muted)', marginTop: '4px' }}>運用状況の見える化 ＆ 設定</p>
                 </div>
             </header>
 
             <div className="bot-grid">
                 {tenants.map((tenant) => (
                     <div key={tenant.tenant_id} className="bot-card">
-                        {/* 基本設定フォーム */}
+                        {/* 1. 統計セクション (見える化) */}
+                        <div className="stats-row">
+                            <div className="stat-box">
+                                <span className="stat-label">累計返信数</span>
+                                <span className="stat-value">{tenant.stats.messageCount}</span>
+                                <span className="stat-unit">messages</span>
+                            </div>
+                            <div className="stat-box">
+                                <span className="stat-label">AI消費量</span>
+                                <span className="stat-value">{(tenant.stats.totalTokens / 1000).toFixed(1)}</span>
+                                <span className="stat-unit">k tokens</span>
+                            </div>
+                            <div className="stat-box">
+                                <span className="stat-label">学習済み知識</span>
+                                <span className="stat-value">{tenant.knowledge_base?.length || 0}</span>
+                                <span className="stat-unit">items</span>
+                            </div>
+                        </div>
+
+                        <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '20px 0' }} />
+
+                        {/* 2. 基本設定フォーム */}
                         <form action={updateTenant}>
                             <input type="hidden" name="tenant_id" value={tenant.tenant_id} />
                             <input type="hidden" name="admin_key" value={key} />
-
                             <div className="bot-header">
                                 <input name="display_name" defaultValue={tenant.display_name} className="bot-name-input" />
                                 <div className="toggle-switch">
@@ -62,21 +89,13 @@ export default async function AdminPage(props: {
                                     <label htmlFor={`active-${tenant.tenant_id}`}>稼働</label>
                                 </div>
                             </div>
-
-                            <div style={{ marginBottom: '16px' }}>
-                                <label className="input-label">SYSTEM PROMPT</label>
-                                <textarea name="system_prompt" defaultValue={tenant.system_prompt} className="prompt-textarea" />
-                            </div>
-
-                            <button type="submit" className="btn btn-primary" style={{ width: '100%', marginBottom: '24px' }}>基本設定を保存</button>
+                            <textarea name="system_prompt" defaultValue={tenant.system_prompt} className="prompt-textarea" style={{ marginBottom: '12px' }} />
+                            <button type="submit" className="btn btn-primary" style={{ width: '100%', marginBottom: '24px' }}>設定を保存</button>
                         </form>
 
-                        <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '24px 0' }} />
-
-                        {/* ナレッジベース管理 */}
+                        {/* 3. ナレッジ管理 */}
                         <div className="kb-section">
-                            <h3 className="input-label">KNOWLEDGE BASE (AIの追加知識)</h3>
-
+                            <h3 className="input-label">KNOWLEDGE BASE</h3>
                             <div className="kb-list">
                                 {tenant.knowledge_base?.map((kb: any) => (
                                     <div key={kb.id} className="kb-item">
@@ -89,13 +108,11 @@ export default async function AdminPage(props: {
                                     </div>
                                 ))}
                             </div>
-
-                            {/* ナレッジ追加フォーム */}
                             <form action={addKnowledge} className="kb-add-form">
                                 <input type="hidden" name="tenant_id" value={tenant.tenant_id} />
                                 <input type="hidden" name="admin_key" value={key} />
-                                <input name="content" className="kb-input" placeholder="新しい知識を追加... (例: 当店の営業時間は10時〜19時です)" required />
-                                <button type="submit" className="btn btn-outline" style={{ whiteSpace: 'nowrap' }}>追加</button>
+                                <input name="content" className="kb-input" placeholder="知識を追加..." required />
+                                <button type="submit" className="btn btn-outline">＋</button>
                             </form>
                         </div>
                     </div>
