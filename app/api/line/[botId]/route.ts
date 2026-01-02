@@ -63,7 +63,6 @@ async function sendNotification(webhookUrl: string | null, tenantId: string, mes
     } catch (e) { console.error(e); }
 }
 
-// Function Calling 定義
 const tools = [
     {
         type: "function" as const,
@@ -139,9 +138,8 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
         });
         const contextText = matchedKnowledge?.length > 0 ? "\n\n【参考資料】\n" + matchedKnowledge.map((k: any) => `- ${k.content}`).join("\n") : "";
 
-        // AI呼び出し (Function Calling有効化)
         const messages = [
-            { role: "system" as const, content: tenant.system_prompt + contextText + (rawKeywords ? `\n合言葉は『${rawKeywords}』です。` : "") },
+            { role: "system" as const, content: tenant.system_prompt + contextText + (rawKeywords ? `\n\n【重要】現在有効な「担当者呼び出しパスワード」は『${rawKeywords}』です。ユーザーが担当者との会話を希望した場合のみ、「担当者にお繋ぎしますので『${rawKeywords}』と入力してください」と案内してください。` : "") },
             { role: "user" as const, content: userMessage }
         ];
 
@@ -152,7 +150,6 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
         const choice = completion.choices[0];
         let aiResponse = choice.message.content;
 
-        // ツール使用要求があった場合
         if (choice.message.tool_calls) {
             const sheets = await getGoogleSheetsClient();
             const sheetId = tenant.google_sheet_id;
@@ -163,14 +160,18 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
                     let toolResult = "";
 
                     if (toolCall.function.name === 'check_schedule') {
-                        // スプレッドシート読み込み (簡易実装: 全データ取得して日付マッチ)
+                        // スプレッドシート読み込み (個人情報保護のため名前は伏せる)
                         const resp = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: 'Sheet1!A:D' });
                         const rows = resp.data.values || [];
-                        const targeted = rows.filter(row => row[0] === args.date); // A列=日付, B=時間, C=名前
-                        toolResult = targeted.length > 0 ? JSON.stringify(targeted) : "その日の予約はありません。";
+
+                        // AIに渡すのは「時間」と「予約済フラグ」のみ。個人名は渡さない。
+                        const targeted = rows
+                            .filter(row => row[0] === args.date)
+                            .map(row => `${row[1]} : 予約済`);
+
+                        toolResult = targeted.length > 0 ? "【現在の予約状況】\n" + targeted.join("\n") : "その日の予約は入っていません。";
                     }
                     else if (toolCall.function.name === 'add_reservation') {
-                        // スプレッドシート書き込み
                         await sheets.spreadsheets.values.append({
                             spreadsheetId: sheetId, range: 'Sheet1!A:D', valueInputOption: 'USER_ENTERED',
                             requestBody: { values: [[args.date, args.time, args.name, args.details || '']] }
@@ -181,7 +182,6 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
                     messages.push(choice.message);
                     messages.push({ role: "tool", content: toolResult, tool_call_id: toolCall.id });
                 }
-                // ツール結果を踏まえて再回答
                 const secondResponse = await openai.chat.completions.create({ messages, model: "gpt-4o-mini" });
                 aiResponse = secondResponse.choices[0].message.content;
             }
@@ -215,4 +215,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ bot
         console.error(error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
+}
+
+export async function GET() {
+    return NextResponse.json({ status: "OK", message: "Bot Router Active" });
 }
