@@ -143,14 +143,18 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
             { role: "user", content: userMessage }
         ];
 
-        // ★修正: toolsがないときは tool_choice も undefined にする
-        const availableTools = tenant.google_sheet_id ? tools : undefined;
-        const completion = await openai.chat.completions.create({
-            messages,
+        // ★修正: 明示的にパラメータオブジェクトを構築し、toolsがない場合はキー自体を含めない
+        const completionParams: any = {
             model: "gpt-4o-mini",
-            tools: availableTools,
-            tool_choice: availableTools ? "auto" : undefined,
-        });
+            messages,
+        };
+
+        if (tenant.google_sheet_id) {
+            completionParams.tools = tools;
+            completionParams.tool_choice = "auto";
+        }
+
+        const completion = await openai.chat.completions.create(completionParams);
 
         const choice = completion.choices[0];
         let aiResponse = choice.message.content;
