@@ -207,6 +207,46 @@ body {
   color: #94a3b8;
 }
 
+.handoff-alert-box {
+  margin-top: 16px;
+  padding: 12px;
+  background: #fef2f2;
+  border: 1px solid #fee2e2;
+  border-radius: 8px;
+}
+
+.handoff-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.handoff-user-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.8rem;
+}
+
+.user-id-brief {
+  color: #c2410c;
+  font-family: monospace;
+}
+
+.resume-btn {
+  background: #ef4444;
+  color: white;
+  border: none;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.resume-btn:hover {
+  background: #dc2626;
+}
 
 .input-label {
   font-size: 0.75rem;

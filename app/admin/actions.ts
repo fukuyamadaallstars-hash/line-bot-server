@@ -46,7 +46,6 @@ export async function addKnowledge(formData: FormData) {
 
     if (!content.trim()) return;
 
-    // 1. 文章をベクトル（数値データ）に変換
     const embeddingResponse = await openai.embeddings.create({
         model: "text-embedding-3-small",
         input: content,
@@ -54,21 +53,11 @@ export async function addKnowledge(formData: FormData) {
 
     const embedding = embeddingResponse.data[0].embedding;
 
-    // 2. DBに保存
     const { error } = await supabase
         .from('knowledge_base')
-        .insert({
-            tenant_id,
-            content,
-            category,
-            embedding
-        });
+        .insert({ tenant_id, content, category, embedding });
 
-    if (error) {
-        console.error('KB Save error:', error);
-        throw new Error('ナレッジの保存に失敗しました');
-    }
-
+    if (error) throw new Error('ナレッジの保存に失敗しました');
     revalidatePath('/admin');
 }
 
@@ -79,12 +68,26 @@ export async function deleteKnowledge(formData: FormData) {
     if (!correctPassword || adminKey !== correctPassword) throw new Error('Unauthorized');
 
     const id = formData.get('id') as string;
+    const { error } = await supabase.from('knowledge_base').delete().eq('id', id);
+    if (error) throw new Error('削除に失敗しました');
+    revalidatePath('/admin');
+}
+
+// AI対応の再開（有人モード終了）
+export async function resumeAi(formData: FormData) {
+    const adminKey = formData.get('admin_key') as string;
+    const correctPassword = process.env.ADMIN_PASSWORD;
+    if (!correctPassword || adminKey !== correctPassword) throw new Error('Unauthorized');
+
+    const tenant_id = formData.get('tenant_id') as string;
+    const user_id = formData.get('user_id') as string;
 
     const { error } = await supabase
-        .from('knowledge_base')
-        .delete()
-        .eq('id', id);
+        .from('users')
+        .update({ is_handoff_active: false, status: 'normal' })
+        .eq('tenant_id', tenant_id)
+        .eq('user_id', user_id);
 
-    if (error) throw new Error('削除に失敗しました');
+    if (error) throw new Error('再開に失敗しました');
     revalidatePath('/admin');
 }
