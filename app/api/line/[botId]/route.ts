@@ -95,7 +95,35 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
             return;
         }
 
-        // 4. ナレッジベース（RAG）の検索
+        // 4. トークン使用量の上限チェック (Cost Control)
+        const now = new Date();
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+
+        // 今月の使用量を集計
+        const { data: usageData } = await supabase
+            .from('usage_logs')
+            .select('token_usage')
+            .eq('tenant_id', tenantId)
+            .gte('created_at', startOfMonth);
+
+        const currentTotal = usageData?.reduce((sum: number, log: any) => sum + (log.token_usage || 0), 0) || 0;
+        const limit = tenant.monthly_token_limit || 0; // 0なら無制限扱いにすることも可能だが、今回は安全のため設定必須とする
+
+        if (limit > 0 && currentTotal >= limit) {
+            console.warn(`[${tenantId}] Token Limit Exceeded: ${currentTotal} / ${limit}`);
+            await lineClient.replyMessage({
+                replyToken: event.replyToken,
+                messages: [{ type: 'text', text: '申し訳ありません。今月のAI利用枠が上限に達しました。来月までお待ちいただくか、管理者へお問い合わせください。' }],
+            });
+            // ログには「制限到達」として残す
+            await supabase.from('usage_logs').insert({
+                tenant_id: tenantId, user_id: userId, event_id: eventId,
+                message_type: 'text', status: 'limit_exceeded', error_message: 'Monthly token limit reached'
+            });
+            return;
+        }
+
+        // 5. ナレッジベース（RAG）の検索
         const openai = new OpenAI({ apiKey: openaiApiKey });
 
         // ユーザーの質問をベクトル化

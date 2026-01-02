@@ -116,6 +116,23 @@ export default async function AdminPage(props: {
                                     <label htmlFor={`active-${tenant.tenant_id}`}>稼働中</label>
                                 </div>
                             </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+                                <div>
+                                    <label className="input-label">月間トークン上限 (0=無制限)</label>
+                                    <input
+                                        type="number"
+                                        name="monthly_token_limit"
+                                        defaultValue={tenant.monthly_token_limit || 0}
+                                        className="kb-input"
+                                        style={{ width: '100%' }}
+                                    />
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'end', fontSize: '0.75rem', color: '#64748b', paddingBottom: '8px' }}>
+                                    ※約100万トークン = 10ドル(¥1500)相当
+                                </div>
+                            </div>
+
                             <textarea name="system_prompt" defaultValue={tenant.system_prompt} className="prompt-textarea" style={{ marginBottom: '12px' }} />
                             <button type="submit" className="btn btn-primary" style={{ width: '100%', marginBottom: '24px' }}>設定を保存</button>
                         </form>
