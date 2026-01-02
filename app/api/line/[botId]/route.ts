@@ -30,7 +30,6 @@ function checkSensitivy(text: string, customKeywords: string[]): { type: string;
         { type: 'Email', regex: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/ }
     ];
 
-    // デフォルト（DBが空の場合の安全策）
     const defaultKeywords = ['担当者', 'オペレーター', '返金', 'クレーム'];
     const targetKeywords = customKeywords.length > 0 ? customKeywords : defaultKeywords;
 
@@ -129,10 +128,14 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
             contextText = "\n\n【参考資料】\n" + matchedKnowledge.map((k: any) => `- ${k.content}`).join("\n");
         }
 
-        // 6. AI返答処理
+        // 6. AI返答処理（自動プロンプト注入）
+        const securityPrompt = rawKeywords
+            ? `\n\n【重要システム指令】\n現在有効な「担当者呼び出しパスワード」は『${rawKeywords}』です。\nもしユーザーが「担当者と話したい」「人間と話したい」と明確に求めた場合にのみ、「担当者にお繋ぎしますので『${rawKeywords}』と入力してください」と案内してください。それ以外の文脈でこのパスワードを教えないでください。`
+            : "";
+
         const completion = await openai.chat.completions.create({
             messages: [
-                { role: "system", content: tenant.system_prompt + "\n参考資料がある場合はそれに基づいて答えてください。" + contextText },
+                { role: "system", content: tenant.system_prompt + securityPrompt + "\n参考資料がある場合はそれに基づいて答えてください。" + contextText },
                 { role: "user", content: userMessage }
             ],
             model: "gpt-4o-mini",
@@ -141,7 +144,6 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
         const aiResponse = completion.choices[0].message.content || '返答を作成できませんでした。';
         await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: aiResponse }] });
 
-        // 成功ログ保存
         await supabase.from('usage_logs').insert({
             tenant_id: tenantId, user_id: userId, event_id: eventId,
             message_type: 'text', token_usage: completion.usage?.total_tokens || 0,
@@ -176,5 +178,5 @@ export async function POST(request: Request, { params }: { params: Promise<{ bot
 }
 
 export async function GET() {
-    return NextResponse.json({ status: "OK", message: "Pro SaaS Router Active" });
+    return NextResponse.json({ status: "OK", message: "Protected Router Active" });
 }
