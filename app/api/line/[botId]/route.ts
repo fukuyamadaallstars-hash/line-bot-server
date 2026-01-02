@@ -41,7 +41,7 @@ function checkSensitivy(text: string): { type: string; found: boolean; level: 'w
     return { type: '', found: false, level: 'warning' };
 }
 
-// 通知送信 (Discord/Slack Webhook対応)
+// 通知送信
 async function sendNotification(webhookUrl: string | null, tenantId: string, message: string) {
     if (!webhookUrl) return;
     try {
@@ -50,7 +50,7 @@ async function sendNotification(webhookUrl: string | null, tenantId: string, mes
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 content: `🚨 **[有人切替アラート]**\n**対象テナント:** ${tenantId}\n**内容:** ${message}`
-            }), // Discordの基本フォーマット
+            }),
         });
     } catch (error) {
         console.error('Notification error:', error);
@@ -66,35 +66,60 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
     const eventId = event.webhookEventId;
 
     try {
-        // 1. 重複チェック
+        // 1. 重複チェック (Idempotency)
+        // LINEは返信が遅いと再送してくるので、同じeventIdならスキップする機能
         const { data: existingLog } = await supabase.from('usage_logs').select('id').eq('tenant_id', tenantId).eq('event_id', eventId).maybeSingle();
-        if (existingLog) return;
+        if (existingLog) {
+            console.log(`[${tenantId}] 重複リクエストのためスキップ: ${eventId}`);
+            return;
+        }
 
-        // 2. ユーザー状態の取得 (upsertで確実に作成/取得)
-        const { data: user, error: userError } = await supabase
+        // 2. ユーザーの状態を取得 (なければ作成)
+        let { data: user, error: fetchError } = await supabase
             .from('users')
-            .upsert({ tenant_id: tenantId, user_id: userId }, { onConflict: 'tenant_id,user_id', ignoreDuplicates: true })
-            .select()
-            .single();
+            .select('*')
+            .eq('tenant_id', tenantId)
+            .eq('user_id', userId)
+            .maybeSingle();
 
-        if (userError || !user) {
-            console.error(`[${tenantId}] User fetch error:`, userError);
+        if (fetchError) {
+            console.error(`[${tenantId}] ユーザー取得エラー:`, fetchError);
             return;
         }
 
-        // 3. 有人切替チェック (Handoff中ならAIは完全に無視)
+        if (!user) {
+            console.log(`[${tenantId}] 新規ユーザー登録: ${userId}`);
+            const { data: newUser, error: insertError } = await supabase
+                .from('users')
+                .insert({ tenant_id: tenantId, user_id: userId, display_name: 'LINE User', is_handoff_active: false })
+                .select()
+                .single();
+
+            if (insertError) {
+                console.error(`[${tenantId}] ユーザー登録エラー:`, insertError);
+                return;
+            }
+            user = newUser;
+        }
+
+        console.log(`[${tenantId}] ユーザー状態確認 - ID: ${userId}, 有人モード: ${user.is_handoff_active}`);
+
+        // 3. 有人切替中（Handoff）ならAIは完全沈黙
         if (user.is_handoff_active === true) {
-            console.log(`[${tenantId}] !! SILENT MODE !! Human handling for user: ${userId}`);
+            console.log(`[${tenantId}] 有人対応中のためAI回答をスキップします: ${userId}`);
             return;
         }
 
-        // 4. 感性・有人切替チェック
+        // 4. 有人切替キーワードの検知
         const check = checkSensitivy(userMessage);
         if (check.found && check.level === 'critical') {
-            console.log(`[${tenantId}] Handoff triggered by: ${userMessage}`);
+            console.log(`[${tenantId}] 有人切替トリガー検知: ${userMessage}`);
+
+            // DBを有人モードに更新
             await supabase.from('users').update({ is_handoff_active: true, status: 'attention_required' }).eq('tenant_id', tenantId).eq('user_id', userId);
+            // チケット作成 & 通知
             await supabase.from('tickets').insert({ tenant_id: tenantId, user_id: userId, last_message_summary: userMessage, priority: 'high' });
-            await sendNotification(tenant.notification_webhook_url, tenantId, `有人切替が必要: ${userMessage}`);
+            await sendNotification(tenant.notification_webhook_url, tenantId, `有人切替が必要です: ${userMessage}`);
 
             await lineClient.replyMessage({
                 replyToken: event.replyToken,
@@ -103,15 +128,7 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
             return;
         }
 
-        // 5. レート制限
-        const oneMinuteAgo = new Date(Date.now() - 60 * 1000).toISOString();
-        const { count } = await supabase.from('usage_logs').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('user_id', userId).gt('created_at', oneMinuteAgo);
-        if (count && count >= 5) {
-            await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '少し時間をおいてから話しかけてね！' }] });
-            return;
-        }
-
-        // 6. AI返答
+        // 5. AI返答処理 (通常モード)
         const openai = new OpenAI({ apiKey: openaiApiKey });
         const completion = await openai.chat.completions.create({
             messages: [{ role: "system", content: tenant.system_prompt }, { role: "user", content: userMessage }],
@@ -121,7 +138,7 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
         const aiResponse = completion.choices[0].message.content || '返答を作成できませんでした。';
         await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: aiResponse }] });
 
-        // 成功ログ
+        // 成功ログ保存 (eventIdを保存することで次回の重複を防止)
         await supabase.from('usage_logs').insert({
             tenant_id: tenantId, user_id: userId, event_id: eventId,
             message_type: 'text', token_usage: completion.usage?.total_tokens || 0,
@@ -129,7 +146,7 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
         });
 
     } catch (error: any) {
-        console.error('Error:', error);
+        console.error(`[${tenantId}] 処理エラー:`, error);
     }
 }
 
@@ -156,5 +173,5 @@ export async function POST(request: Request, { params }: { params: Promise<{ bot
 }
 
 export async function GET() {
-    return NextResponse.json({ status: "OK", message: "Handoff Logic Refined" });
+    return NextResponse.json({ status: "OK", message: "Handoff Logic Debuggable Active" });
 }
