@@ -151,7 +151,6 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
 
         if (tenant.google_sheet_id) {
             completionParams.tools = tools;
-            completionParams.tool_choice = "auto";
         }
 
         const completion = await openai.chat.completions.create(completionParams);
@@ -197,7 +196,6 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
                 };
                 if (tenant.google_sheet_id) {
                     secondParams.tools = tools;
-                    secondParams.tool_choice = "auto";
                 }
                 const secondResponse = await openai.chat.completions.create(secondParams);
                 aiResponse = secondResponse.choices[0].message.content;
