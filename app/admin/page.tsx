@@ -31,23 +31,9 @@ async function getTenantsFullData() {
     }));
 }
 
-export default async function AdminPage(props: {
-    searchParams: Promise<{ key?: string }>
-}) {
-    const searchParams = await props.searchParams;
-    const key = searchParams.key;
-    const adminPassword = process.env.ADMIN_PASSWORD;
-
-    if (!adminPassword || key !== adminPassword) {
-        return (
-            <div style={{ padding: '100px 20px', textAlign: 'center', fontFamily: 'sans-serif' }}>
-                <h1>401 Unauthorized</h1>
-                <p>正しい管理用URLからアクセスしてください。</p>
-            </div>
-        );
-    }
-
+export default async function AdminPage() {
     const tenants = await getTenantsFullData();
+    const adminKey = process.env.ADMIN_PASSWORD; // Assuming admin_key is still needed for actions
 
     return (
         <div className="dashboard-container">
@@ -94,7 +80,7 @@ export default async function AdminPage(props: {
                                             <form action={resumeAi}>
                                                 <input type="hidden" name="tenant_id" value={tenant.tenant_id} />
                                                 <input type="hidden" name="user_id" value={u.user_id} />
-                                                <input type="hidden" name="admin_key" value={key} />
+
                                                 <button type="submit" className="resume-btn">AI対応を再開</button>
                                             </form>
                                         </div>
@@ -108,7 +94,7 @@ export default async function AdminPage(props: {
                         {/* 3. 基本設定 */}
                         <form action={updateTenant}>
                             <input type="hidden" name="tenant_id" value={tenant.tenant_id} />
-                            <input type="hidden" name="admin_key" value={key} />
+
                             <div className="bot-header">
                                 <input name="display_name" defaultValue={tenant.display_name} className="bot-name-input" />
                                 <div className="toggle-switch">
@@ -146,7 +132,7 @@ export default async function AdminPage(props: {
                                         <span className="kb-content">{kb.content}</span>
                                         <form action={deleteKnowledge}>
                                             <input type="hidden" name="id" value={kb.id} />
-                                            <input type="hidden" name="admin_key" value={key} />
+
                                             <button type="submit" className="kb-delete-btn">×</button>
                                         </form>
                                     </div>
@@ -154,7 +140,7 @@ export default async function AdminPage(props: {
                             </div>
                             <form action={addKnowledge} className="kb-add-form">
                                 <input type="hidden" name="tenant_id" value={tenant.tenant_id} />
-                                <input type="hidden" name="admin_key" value={key} />
+
                                 <input name="content" className="kb-input" placeholder="知識を一行追加..." required />
                                 <button type="submit" className="btn btn-outline">＋</button>
                             </form>

@@ -3,6 +3,8 @@
 import { createClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 import OpenAI from 'openai';
+import { cookies } from 'next/headers';
+import { jwtVerify } from 'jose';
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -11,14 +13,22 @@ const supabase = createClient(
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// テナント基本情報の更新
-export async function updateTenant(formData: FormData) {
-    const adminKey = formData.get('admin_key') as string;
-    const correctPassword = process.env.ADMIN_PASSWORD;
+// 共通認証関数 (Cookieチェック)
+async function verifyAdmin() {
+    const cookieStore = await cookies();
+    const token = cookieStore.get('admin_session')?.value;
+    if (!token) throw new Error('Unauthorized');
 
-    if (!correctPassword || adminKey !== correctPassword) {
+    const secret = new TextEncoder().encode(process.env.ADMIN_PASSWORD);
+    try {
+        await jwtVerify(token, secret);
+    } catch (e) {
         throw new Error('Unauthorized');
     }
+}
+
+export async function updateTenant(formData: FormData) {
+    await verifyAdmin();
 
     const tenant_id = formData.get('tenant_id') as string;
     const display_name = formData.get('display_name') as string;
@@ -28,24 +38,15 @@ export async function updateTenant(formData: FormData) {
 
     const { error } = await supabase
         .from('tenants')
-        .update({
-            display_name,
-            system_prompt,
-            is_active,
-            monthly_token_limit,
-            updated_at: new Date().toISOString()
-        })
+        .update({ display_name, system_prompt, is_active, monthly_token_limit, updated_at: new Date().toISOString() })
         .eq('tenant_id', tenant_id);
 
     if (error) throw new Error('更新に失敗しました');
     revalidatePath('/admin');
 }
 
-// ナレッジ（知識）の追加
 export async function addKnowledge(formData: FormData) {
-    const adminKey = formData.get('admin_key') as string;
-    const correctPassword = process.env.ADMIN_PASSWORD;
-    if (!correctPassword || adminKey !== correctPassword) throw new Error('Unauthorized');
+    await verifyAdmin();
 
     const tenant_id = formData.get('tenant_id') as string;
     const content = formData.get('content') as string;
@@ -68,24 +69,16 @@ export async function addKnowledge(formData: FormData) {
     revalidatePath('/admin');
 }
 
-// ナレッジの削除
 export async function deleteKnowledge(formData: FormData) {
-    const adminKey = formData.get('admin_key') as string;
-    const correctPassword = process.env.ADMIN_PASSWORD;
-    if (!correctPassword || adminKey !== correctPassword) throw new Error('Unauthorized');
-
+    await verifyAdmin();
     const id = formData.get('id') as string;
     const { error } = await supabase.from('knowledge_base').delete().eq('id', id);
     if (error) throw new Error('削除に失敗しました');
     revalidatePath('/admin');
 }
 
-// AI対応の再開（有人モード終了）
 export async function resumeAi(formData: FormData) {
-    const adminKey = formData.get('admin_key') as string;
-    const correctPassword = process.env.ADMIN_PASSWORD;
-    if (!correctPassword || adminKey !== correctPassword) throw new Error('Unauthorized');
-
+    await verifyAdmin();
     const tenant_id = formData.get('tenant_id') as string;
     const user_id = formData.get('user_id') as string;
 
