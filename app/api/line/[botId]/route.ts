@@ -137,14 +137,19 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
         });
         const contextText = matchedKnowledge?.length > 0 ? "\n\n【参考資料】\n" + matchedKnowledge.map((k: any) => `- ${k.content}`).join("\n") : "";
 
-        // ★修正: messages配列を any[] として定義して、異なる型のメッセージ(Assistant, Tool)を格納できるようにする
+        // messages配列を any[] として定義
         const messages: any[] = [
             { role: "system", content: tenant.system_prompt + contextText + (rawKeywords ? `\n\n【重要】現在有効な「担当者呼び出しパスワード」は『${rawKeywords}』です。ユーザーが担当者との会話を希望した場合のみ、「担当者にお繋ぎしますので『${rawKeywords}』と入力してください」と案内してください。` : "") },
             { role: "user", content: userMessage }
         ];
 
+        // ★修正: toolsがないときは tool_choice も undefined にする
+        const availableTools = tenant.google_sheet_id ? tools : undefined;
         const completion = await openai.chat.completions.create({
-            messages, model: "gpt-4o-mini", tools: tenant.google_sheet_id ? tools : undefined, tool_choice: "auto",
+            messages,
+            model: "gpt-4o-mini",
+            tools: availableTools,
+            tool_choice: availableTools ? "auto" : undefined,
         });
 
         const choice = completion.choices[0];
