@@ -29,8 +29,7 @@ function checkSensitivy(text: string): { type: string; found: boolean; level: 'w
         { type: 'Phone', regex: /(\d{2,4}-\d{2,4}-\d{4})|(\d{10,11})/ },
         { type: 'Email', regex: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/ }
     ];
-    const criticalKeywords = ['返金', 'クレーム', '訴える', '弁護士', '消費者センター'];
-    const handoffKeywords = ['担当者', 'オペレーター', '人間', 'わかってない'];
+    const criticalKeywords = ['担当者', 'オペレーター', '人間', 'わかってない', '返金', 'クレーム', '弁護士'];
 
     for (const pattern of piiPatterns) {
         if (pattern.regex.test(text)) return { type: 'PII (' + pattern.type + ')', found: true, level: 'warning' };
@@ -38,14 +37,11 @@ function checkSensitivy(text: string): { type: string; found: boolean; level: 'w
     for (const word of criticalKeywords) {
         if (text.includes(word)) return { type: 'Critical Keyword: ' + word, found: true, level: 'critical' };
     }
-    for (const word of handoffKeywords) {
-        if (text.includes(word)) return { type: 'Handoff Request', found: true, level: 'critical' };
-    }
 
     return { type: '', found: false, level: 'warning' };
 }
 
-// 通知送信 (Slack/Webhook)
+// 通知送信
 async function sendNotification(webhookUrl: string | null, tenantId: string, message: string) {
     if (!webhookUrl) return;
     try {
@@ -72,32 +68,35 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
         const { data: existingLog } = await supabase.from('usage_logs').select('id').eq('tenant_id', tenantId).eq('event_id', eventId).maybeSingle();
         if (existingLog) return;
 
-        // 2. ユーザー登録・状態取得
-        let { data: user } = await supabase.from('users').select('*').eq('tenant_id', tenantId).eq('user_id', userId).maybeSingle();
-        if (!user) {
-            const { data: newUser } = await supabase.from('users').insert({ tenant_id: tenantId, user_id: userId, display_name: 'LINE User' }).select().single();
-            user = newUser;
-        }
+        // 2. ユーザー状態の取得 (upsertで確実に作成/取得)
+        const { data: user, error: userError } = await supabase
+            .from('users')
+            .upsert({ tenant_id: tenantId, user_id: userId }, { onConflict: 'tenant_id,user_id', ignoreDuplicates: true })
+            .select()
+            .single();
 
-        // 3. 有人切替チェック (Handoff中ならAIは無視)
-        if (user.is_handoff_active) {
-            console.log(`[${tenantId}] Human handling for user: ${userId}. AI silent.`);
+        if (userError || !user) {
+            console.error(`[${tenantId}] User fetch error:`, userError);
             return;
         }
 
-        // 4. 感性・NGチェック
+        // 3. 有人切替チェック (Handoff中ならAIは完全に無視)
+        if (user.is_handoff_active === true) {
+            console.log(`[${tenantId}] !! SILENT MODE !! Human handling for user: ${userId}`);
+            return;
+        }
+
+        // 4. 感性・有人切替チェック
         const check = checkSensitivy(userMessage);
         if (check.found && check.level === 'critical') {
-            // 有人切替をONにする
+            console.log(`[${tenantId}] Handoff triggered by: ${userMessage}`);
             await supabase.from('users').update({ is_handoff_active: true, status: 'attention_required' }).eq('tenant_id', tenantId).eq('user_id', userId);
-            // チケット作成
             await supabase.from('tickets').insert({ tenant_id: tenantId, user_id: userId, last_message_summary: userMessage, priority: 'high' });
-            // 通知
-            await sendNotification(tenant.notification_webhook_url, tenantId, `有人切替が必要なメッセージを受信しました: ${userMessage}`);
+            await sendNotification(tenant.notification_webhook_url, tenantId, `有人切替が必要: ${userMessage}`);
 
             await lineClient.replyMessage({
                 replyToken: event.replyToken,
-                messages: [{ type: 'text', text: '内容を承知いたしました。より詳しい対応のため、ここからは担当者が直接確認し、折り返しご連絡させていただきます。少々お待ちください。' }],
+                messages: [{ type: 'text', text: '内容を承知いたしました。担当者が直接確認するため、AIの自動回答を停止しました。折り返しご連絡いたしますので、少々お待ちください。' }],
             });
             return;
         }
@@ -155,5 +154,5 @@ export async function POST(request: Request, { params }: { params: Promise<{ bot
 }
 
 export async function GET() {
-    return NextResponse.json({ status: "OK", message: "Handoff Enabled Router Active" });
+    return NextResponse.json({ status: "OK", message: "Handoff Logic Refined" });
 }
