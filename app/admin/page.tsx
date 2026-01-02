@@ -16,14 +16,34 @@ async function getTenants() {
     return data;
 }
 
-export default async function AdminPage() {
+export default async function AdminPage(props: {
+    searchParams: Promise<{ key?: string }>
+}) {
+    const searchParams = await props.searchParams;
+    const key = searchParams.key;
+    const adminPassword = process.env.ADMIN_PASSWORD;
+
+    // パスワードが未設定、または合言葉が違う場合は拒否
+    if (!adminPassword || key !== adminPassword) {
+        return (
+            <div style={{ padding: '100px 20px', textAlign: 'center', fontFamily: 'sans-serif', color: '#64748b' }}>
+                <h1 style={{ fontSize: '3rem', color: '#0f172a', marginBottom: '16px' }}>401</h1>
+                <p style={{ fontSize: '1.1rem' }}>アクセス権限がありません。</p>
+                <p style={{ fontSize: '0.9rem', marginTop: '8px' }}>正しい管理用URLからアクセスしてください。</p>
+            </div>
+        );
+    }
+
     const tenants = await getTenants();
 
     return (
         <div className="dashboard-container">
             <header className="header">
                 <div>
-                    <h1>Bot Admin Console</h1>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <h1>Bot Admin Console</h1>
+                        <span style={{ background: '#e2e8f0', padding: '2px 8px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 'bold' }}>SECURE MODE</span>
+                    </div>
                     <p style={{ color: 'var(--text-muted)', marginTop: '4px' }}>
                         あなた専用のボット管理リモコン
                     </p>
@@ -34,6 +54,7 @@ export default async function AdminPage() {
                 {tenants.map((tenant) => (
                     <form key={tenant.tenant_id} action={updateTenant} className="bot-card">
                         <input type="hidden" name="tenant_id" value={tenant.tenant_id} />
+                        <input type="hidden" name="admin_key" value={key} />
 
                         <div className="bot-header">
                             <input

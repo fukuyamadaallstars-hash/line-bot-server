@@ -9,6 +9,14 @@ const supabase = createClient(
 );
 
 export async function updateTenant(formData: FormData) {
+    // 簡易認証チェック
+    const adminKey = formData.get('admin_key') as string;
+    const correctPassword = process.env.ADMIN_PASSWORD;
+
+    if (!correctPassword || adminKey !== correctPassword) {
+        throw new Error('Unauthorized: Invalid Admin Key');
+    }
+
     const tenant_id = formData.get('tenant_id') as string;
     const display_name = formData.get('display_name') as string;
     const system_prompt = formData.get('system_prompt') as string;
@@ -29,6 +37,5 @@ export async function updateTenant(formData: FormData) {
         throw new Error('更新に失敗しました');
     }
 
-    // 画面を再読み込みして最新データを反映させる
     revalidatePath('/admin');
 }
