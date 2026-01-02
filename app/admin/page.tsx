@@ -2,10 +2,20 @@ import { createClient } from '@supabase/supabase-js';
 import './admin.css';
 import { updateTenant } from './actions';
 
+// 実行時（ブラウザで開いた時）にだけクライアントを作る関数
+function getSupabaseAdmin() {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    // ビルド時（環境変数がない時）はエラーにせずnullを返す
+    if (!supabaseUrl || !supabaseKey) return null;
+
+    return createClient(supabaseUrl, supabaseKey);
+}
+
 async function getTenants() {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return []; // ビルド時は空配列を返す
 
     const { data, error } = await supabase
         .from('tenants')
@@ -13,7 +23,7 @@ async function getTenants() {
         .order('created_at', { ascending: false });
 
     if (error) throw error;
-    return data;
+    return data || [];
 }
 
 export default async function AdminPage(props: {
@@ -29,7 +39,7 @@ export default async function AdminPage(props: {
             <div style={{ padding: '100px 20px', textAlign: 'center', fontFamily: 'sans-serif', color: '#64748b' }}>
                 <h1 style={{ fontSize: '3rem', color: '#0f172a', marginBottom: '16px' }}>401</h1>
                 <p style={{ fontSize: '1.1rem' }}>アクセス権限がありません。</p>
-                <p style={{ fontSize: '0.9rem', marginTop: '8px' }}>正しい管理用URLからアクセスしてください。</p>
+                <p style={{ fontSize: '0.9rem', marginTop: '8px' }}>正確な管理用パスワードを入力してください。</p>
             </div>
         );
     }
@@ -93,6 +103,11 @@ export default async function AdminPage(props: {
                         </div>
                     </form>
                 ))}
+                {tenants.length === 0 && (
+                    <div style={{ gridColumn: '1/-1', padding: '40px', border: '1px dashed #cbd5e1', borderRadius: '12px', textAlign: 'center', color: '#64748b' }}>
+                        ボットが見つかりませんでした。
+                    </div>
+                )}
             </div>
         </div>
     );
