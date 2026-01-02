@@ -41,14 +41,16 @@ function checkSensitivy(text: string): { type: string; found: boolean; level: 'w
     return { type: '', found: false, level: 'warning' };
 }
 
-// 通知送信
+// 通知送信 (Discord/Slack Webhook対応)
 async function sendNotification(webhookUrl: string | null, tenantId: string, message: string) {
     if (!webhookUrl) return;
     try {
         await fetch(webhookUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: `[${tenantId}] ${message}` }),
+            body: JSON.stringify({
+                content: `🚨 **[有人切替アラート]**\n**対象テナント:** ${tenantId}\n**内容:** ${message}`
+            }), // Discordの基本フォーマット
         });
     } catch (error) {
         console.error('Notification error:', error);
