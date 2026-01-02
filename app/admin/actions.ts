@@ -36,6 +36,7 @@ export async function updateTenant(formData: FormData) {
     const is_active = formData.get('is_active') === 'on';
     const monthly_token_limit = parseInt(formData.get('monthly_token_limit') as string) || 0;
     const handoff_keywords = formData.get('handoff_keywords') as string;
+    const google_sheet_id = formData.get('google_sheet_id') as string;
 
     const { error } = await supabase
         .from('tenants')
@@ -45,6 +46,7 @@ export async function updateTenant(formData: FormData) {
             is_active,
             monthly_token_limit,
             handoff_keywords,
+            google_sheet_id,
             updated_at: new Date().toISOString()
         })
         .eq('tenant_id', tenant_id);
@@ -55,25 +57,19 @@ export async function updateTenant(formData: FormData) {
 
 export async function addKnowledge(formData: FormData) {
     await verifyAdmin();
-
     const tenant_id = formData.get('tenant_id') as string;
     const content = formData.get('content') as string;
     const category = formData.get('category') as string;
-
     if (!content.trim()) return;
 
     const embeddingResponse = await openai.embeddings.create({
         model: "text-embedding-3-small",
         input: content,
     });
-
     const embedding = embeddingResponse.data[0].embedding;
 
-    const { error } = await supabase
-        .from('knowledge_base')
-        .insert({ tenant_id, content, category, embedding });
-
-    if (error) throw new Error('ナレッジの保存に失敗しました');
+    const { error } = await supabase.from('knowledge_base').insert({ tenant_id, content, category, embedding });
+    if (error) throw new Error('保存エラー');
     revalidatePath('/admin');
 }
 
@@ -81,7 +77,7 @@ export async function deleteKnowledge(formData: FormData) {
     await verifyAdmin();
     const id = formData.get('id') as string;
     const { error } = await supabase.from('knowledge_base').delete().eq('id', id);
-    if (error) throw new Error('削除に失敗しました');
+    if (error) throw new Error('削除エラー');
     revalidatePath('/admin');
 }
 
@@ -89,13 +85,7 @@ export async function resumeAi(formData: FormData) {
     await verifyAdmin();
     const tenant_id = formData.get('tenant_id') as string;
     const user_id = formData.get('user_id') as string;
-
-    const { error } = await supabase
-        .from('users')
-        .update({ is_handoff_active: false, status: 'normal' })
-        .eq('tenant_id', tenant_id)
-        .eq('user_id', user_id);
-
-    if (error) throw new Error('再開に失敗しました');
+    const { error } = await supabase.from('users').update({ is_handoff_active: false, status: 'normal' }).eq('tenant_id', tenant_id).eq('user_id', user_id);
+    if (error) throw new Error('再開エラー');
     revalidatePath('/admin');
 }

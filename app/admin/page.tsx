@@ -120,6 +120,17 @@ export default async function AdminPage() {
                             </div>
 
                             <div style={{ marginBottom: '16px' }}>
+                                <label className="input-label">GOOGLE SHEET ID (予約連携用)</label>
+                                <input
+                                    name="google_sheet_id"
+                                    defaultValue={tenant.google_sheet_id || ''}
+                                    className="kb-input"
+                                    style={{ width: '100%', fontFamily: 'monospace' }}
+                                    placeholder="1BxiMVs0XRA5nFK..."
+                                />
+                            </div>
+
+                            <div style={{ marginBottom: '16px' }}>
                                 <label className="input-label">有人切替キーワード (カンマ区切り)</label>
                                 <input
                                     name="handoff_keywords"
