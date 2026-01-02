@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import './admin.css';
+import { updateTenant } from './actions';
 
 async function getTenants() {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -22,38 +23,54 @@ export default async function AdminPage() {
         <div className="dashboard-container">
             <header className="header">
                 <div>
-                    <h1>Bot Dashboard</h1>
+                    <h1>Bot Admin Console</h1>
                     <p style={{ color: 'var(--text-muted)', marginTop: '4px' }}>
-                        管理中のボット: {tenants.length}件
+                        あなた専用のボット管理リモコン
                     </p>
                 </div>
-                <button className="btn btn-primary">+ 新規ボット追加</button>
             </header>
 
             <div className="bot-grid">
                 {tenants.map((tenant) => (
-                    <div key={tenant.tenant_id} className="bot-card">
+                    <form key={tenant.tenant_id} action={updateTenant} className="bot-card">
+                        <input type="hidden" name="tenant_id" value={tenant.tenant_id} />
+
                         <div className="bot-header">
-                            <div>
-                                <div className="bot-name">{tenant.display_name}</div>
-                                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                                    ID: {tenant.tenant_id}
-                                </div>
+                            <input
+                                name="display_name"
+                                defaultValue={tenant.display_name}
+                                className="bot-name-input"
+                                placeholder="ボット名"
+                            />
+                            <div className="toggle-switch">
+                                <input
+                                    type="checkbox"
+                                    name="is_active"
+                                    defaultChecked={tenant.is_active}
+                                    id={`active-${tenant.tenant_id}`}
+                                />
+                                <label htmlFor={`active-${tenant.tenant_id}`}>稼働中</label>
                             </div>
-                            <span className={`status-badge ${tenant.is_active ? 'status-active' : 'status-inactive'}`}>
-                                {tenant.is_active ? '稼働中' : '停止中'}
-                            </span>
                         </div>
 
-                        <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', height: '2.5rem' }}>
-                            {tenant.system_prompt || 'システムプロンプト未設定'}
-                        </p>
+                        <div style={{ marginBottom: '16px' }}>
+                            <label style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+                                SYSTEM PROMPT (AIの性格・教える知識)
+                            </label>
+                            <textarea
+                                name="system_prompt"
+                                defaultValue={tenant.system_prompt}
+                                className="prompt-textarea"
+                                placeholder="AIへの指示をここに入力..."
+                            />
+                        </div>
 
                         <div className="action-row">
-                            <button className="btn btn-outline">詳細・設定</button>
-                            <button className="btn btn-outline">ログ確認</button>
+                            <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>
+                                この内容で保存（反映）
+                            </button>
                         </div>
-                    </div>
+                    </form>
                 ))}
             </div>
         </div>
