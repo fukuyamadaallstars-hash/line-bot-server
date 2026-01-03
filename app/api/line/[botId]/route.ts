@@ -224,15 +224,16 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
         const contextText = matchedKnowledge?.length > 0 ? "\n\n【参考資料】\n" + matchedKnowledge.map((k: any) => `- ${k.content.substring(0, 500)}`).join("\n") : "";
 
         // messages配列を any[] として定義
-        const messages: any[] = [
-            { role: "system", content: tenant.system_prompt + contextText + (rawKeywords ? `\n\n【重要】現在有効な「担当者呼び出しパスワード」は『${rawKeywords}』です。ユーザーが担当者との会話を希望した場合のみ、「担当者にお繋ぎしますので『${rawKeywords}』と入力してください」と案内してください。` : "") },
+        const now = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
+        const completionMessages: any[] = [
+            { role: "system", content: `現在の日時は ${now} です。\n` + tenant.system_prompt + contextText + (rawKeywords ? `\n\n【重要】現在有効な「担当者呼び出しパスワード」は『${rawKeywords}』です。ユーザーが担当者との会話を希望した場合のみ、「担当者にお繋ぎしますので『${rawKeywords}』と入力してください」と案内してください。` : "") },
             { role: "user", content: userMessage }
         ];
 
         // ★修正: 明示的にパラメータオブジェクトを構築し、toolsがない場合はキー自体を含めない
         const completionParams: any = {
             model: "gpt-4o-mini",
-            messages,
+            messages: completionMessages,
         };
 
         if (tenant.google_sheet_id) {
@@ -290,15 +291,15 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
                         */
                     }
 
-                    messages.push(choice.message);
-                    messages.push({ role: "tool", content: toolResult, tool_call_id: toolCall.id });
+                    completionMessages.push(choice.message);
+                    completionMessages.push({ role: "tool", content: toolResult, tool_call_id: toolCall.id });
                 }
                 // 2回目の呼び出し時も、同様に条件分岐済みのパラメータを使用する(ただしmessagesは更新後のもの)
                 // もし2回目以降でToolを使わせたくない場合は tools を外すが、会話の流れ上は一貫性を持たせるため、
                 // 基本的には同じ設定で良いが、念のため再定義する。
                 const secondParams: any = {
                     model: "gpt-4o-mini",
-                    messages,
+                    messages: completionMessages,
                 };
                 if (tenant.google_sheet_id) {
                     secondParams.tools = tools;
