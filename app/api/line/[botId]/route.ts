@@ -142,20 +142,37 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
                 const sheets = await getGoogleSheetsClient();
                 const sheetId = tenant.google_sheet_id;
                 if (sheets && sheetId && resId) {
-                    const resp = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: 'Sheet1!A:G' }); // A:Gまで拡張
+                    const resp = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: 'Sheet1!A:H' }); // A:Hまで拡張(H列にuserId)
                     const rows = resp.data.values || [];
                     const rowIndex = rows.findIndex(row => row[0] === resId);
 
                     if (rowIndex !== -1) {
+                        const targetRow = rows[rowIndex];
+                        const customerUserId = targetRow[7]; // H列(8番目)
                         const newStatus = command === '#CONFIRM' ? 'CONFIRMED' : 'CANCELLED';
-                        // Google Sheets APIは0-indexedの行番号ではなく、1-indexedの行番号(A1表記)が必要。
-                        // rows[0]はヘッダーの可能性が高いが、とりあえず rowIndex + 1 で計算
-                        const updateRange = `Sheet1!B${rowIndex + 1}`; // B列がStatusと仮定
+
+                        // Google Sheets更新
+                        const updateRange = `Sheet1!B${rowIndex + 1}`;
                         await sheets.spreadsheets.values.update({
                             spreadsheetId: sheetId, range: updateRange, valueInputOption: 'USER_ENTERED',
                             requestBody: { values: [[newStatus]] }
                         });
-                        await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `予約 ${resId} を ${newStatus} に更新しました。` }] });
+
+                        // 一般ユーザーへ通知
+                        if (customerUserId) {
+                            const notifyText = command === '#CONFIRM'
+                                ? `【予約確定】\n予約ID: ${resId} の予約が確定しました。\nご来店をお待ちしております。`
+                                : `【予約キャンセル】\n申し訳ございません。予約ID: ${resId} の予約はキャンセルされました。`;
+
+                            try {
+                                await lineClient.pushMessage({
+                                    to: customerUserId,
+                                    messages: [{ type: 'text', text: notifyText }]
+                                });
+                            } catch (e) { console.error('Push notification failed', e); }
+                        }
+
+                        await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `予約 ${resId} を ${newStatus} に更新し、ユーザーへ通知しました。` }] });
                         return;
                     } else {
                         await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `予約ID ${resId} が見つかりません。` }] });
@@ -248,12 +265,27 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
                     else if (tc.function.name === 'add_reservation') {
                         const reservationId = crypto.randomUUID().split('-')[0]; // 短めのID生成
                         await sheets.spreadsheets.values.append({
-                            spreadsheetId: sheetId, range: 'Sheet1!A:G', valueInputOption: 'USER_ENTERED',
-                            requestBody: { values: [[reservationId, 'PENDING', args.date, args.time, args.name, args.details || '', new Date().toISOString()]] }
+                            spreadsheetId: sheetId, range: 'Sheet1', valueInputOption: 'USER_ENTERED',
+                            requestBody: { values: [[reservationId, 'PENDING', args.date, args.time, args.name, args.details || '', new Date().toISOString(), userId]] }
                         });
                         toolResult = `仮予約を受付けました。\n予約ID: ${reservationId}\nお店からの確定連絡をお待ちください。`;
-                        // スタッフへの通知（簡易実装: 本来はスタッフのLINE IDへPushメッセージを送るべきだが、ここではログのみ）
-                        // await lineClient.pushMessage({ to: STAFF_ID, messages: [{ type: 'text', text: `新規予約依頼: ${reservationId}` }] });
+
+                        // スタッフへの通知 (Webhook)
+                        const staffNotifyMsg = `【新規予約依頼】\n予約ID: ${reservationId}\n日時: ${args.date} ${args.time}\nお名前: ${args.name}\n内容: ${args.details || '-'}\n\n確定する場合:\n#CONFIRM ${reservationId}\n\nキャンセルする場合:\n#CANCEL ${reservationId}`;
+                        await sendNotification(tenant.notification_webhook_url, tenantId, staffNotifyMsg);
+
+                        // スタッフへの通知 (LINE Push - is_staffなユーザー全員へ)
+                        const { data: staffMembers } = await supabase.from('users').select('user_id').eq('tenant_id', tenantId).eq('is_staff', true);
+                        if (staffMembers && staffMembers.length > 0) {
+                            for (const sm of staffMembers) {
+                                try {
+                                    await lineClient.pushMessage({
+                                        to: sm.user_id,
+                                        messages: [{ type: 'text', text: staffNotifyMsg }]
+                                    });
+                                } catch (e) { console.error('Staff push failed', e); }
+                            }
+                        }
                     }
 
                     messages.push(choice.message);
