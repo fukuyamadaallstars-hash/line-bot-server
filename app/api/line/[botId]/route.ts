@@ -270,13 +270,14 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
                     }
                     else if (tc.function.name === 'add_reservation') {
                         const reservationId = crypto.randomUUID().split('-')[0]; // 短めのID生成
+                        const jstTime = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
                         await sheets.spreadsheets.values.append({
                             spreadsheetId: sheetId, range: 'Sheet1', valueInputOption: 'USER_ENTERED',
-                            requestBody: { values: [[reservationId, 'PENDING', args.date, args.time, args.name, args.details || '', new Date().toISOString(), userId]] }
+                            requestBody: { values: [[reservationId, 'PENDING', args.date, args.time, args.name, args.details || '', jstTime, userId]] }
                         });
                         toolResult = `仮予約を受付けました。\n予約ID: ${reservationId}\nお店からの確定連絡をお待ちください。`;
 
-                        /* 通知機能一時停止：エラー切り分けのため
+                        /* 通知機能復活 */
                         // スタッフへの通知 (Webhook)
                         const staffNotifyMsg = `【新規予約依頼】\n予約ID: ${reservationId}\n日時: ${args.date} ${args.time}\nお名前: ${args.name}\n内容: ${args.details || '-'}\n\n確定する場合:\n#CONFIRM ${reservationId}\n\nキャンセルする場合:\n#CANCEL ${reservationId}`;
                         await sendNotification(tenant.notification_webhook_url, tenantId, staffNotifyMsg);
@@ -286,14 +287,13 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
                         if (staffMembers && staffMembers.length > 0) {
                             for (const sm of staffMembers) {
                                 try {
-                                    await lineClient.pushMessage({ 
-                                        to: sm.user_id, 
-                                        messages: [{ type: 'text', text: staffNotifyMsg }] 
+                                    await lineClient.pushMessage({
+                                        to: sm.user_id,
+                                        messages: [{ type: 'text', text: staffNotifyMsg }]
                                     });
                                 } catch (e) { console.error('Staff push failed', e); }
                             }
                         }
-                        */
                     }
 
                     completionMessages.push(choice.message);
