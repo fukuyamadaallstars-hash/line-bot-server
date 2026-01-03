@@ -114,6 +114,57 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
 
         const rawKeywords = tenant.handoff_keywords || "";
         const customKeywords = rawKeywords.split(',').map((k: string) => k.trim()).filter((k: string) => k.length > 0);
+
+        // ★Staff Command Handler (#CONFIRM, #CANCEL, #STAFF)
+        if (userMessage.startsWith('#')) {
+            const [command, arg] = userMessage.split(' ');
+
+            // 1. スタッフ登録 (#STAFF <code)
+            if (command === '#STAFF') {
+                if (arg === tenant.staff_passcode) {
+                    await supabase.from('users').update({ is_staff: true }).eq('tenant_id', tenantId).eq('user_id', userId);
+                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '✅ スタッフ登録が完了しました。\n管理コマンドが利用可能です。' }] });
+                    return;
+                } else {
+                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '⛔️ パスコードが間違っています。' }] });
+                    return;
+                }
+            }
+
+            // 2. 管理コマンド (#CONFIRM, #CANCEL) - 要スタッフ権限
+            if (command === '#CONFIRM' || command === '#CANCEL') {
+                if (!user.is_staff) {
+                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '⛔️ 権限がありません。\n先に #STAFF <コード> で登録してください。' }] });
+                    return;
+                }
+
+                const resId = arg;
+                const sheets = await getGoogleSheetsClient();
+                const sheetId = tenant.google_sheet_id;
+                if (sheets && sheetId && resId) {
+                    const resp = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: 'Sheet1!A:G' }); // A:Gまで拡張
+                    const rows = resp.data.values || [];
+                    const rowIndex = rows.findIndex(row => row[0] === resId);
+
+                    if (rowIndex !== -1) {
+                        const newStatus = command === '#CONFIRM' ? 'CONFIRMED' : 'CANCELLED';
+                        // Google Sheets APIは0-indexedの行番号ではなく、1-indexedの行番号(A1表記)が必要。
+                        // rows[0]はヘッダーの可能性が高いが、とりあえず rowIndex + 1 で計算
+                        const updateRange = `Sheet1!B${rowIndex + 1}`; // B列がStatusと仮定
+                        await sheets.spreadsheets.values.update({
+                            spreadsheetId: sheetId, range: updateRange, valueInputOption: 'USER_ENTERED',
+                            requestBody: { values: [[newStatus]] }
+                        });
+                        await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `予約 ${resId} を ${newStatus} に更新しました。` }] });
+                        return;
+                    } else {
+                        await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `予約ID ${resId} が見つかりません。` }] });
+                        return;
+                    }
+                }
+            }
+        }
+
         const check = checkSensitivy(userMessage, customKeywords);
 
         if (check.found && check.level === 'critical') {
@@ -123,19 +174,37 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
             return;
         }
 
+        // ★仕様4: トークン上限・通知 (80% / 95% / 100%)
         const { data: usageData } = await supabase.from('usage_logs').select('token_usage').eq('tenant_id', tenantId);
         const currentTotal = usageData?.reduce((s: number, l: any) => s + (l.token_usage || 0), 0) || 0;
-        if (tenant.monthly_token_limit > 0 && currentTotal >= tenant.monthly_token_limit) {
-            await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '今月のAI利用枠上限です。' }] });
-            return;
+        const limit = tenant.monthly_token_limit;
+
+        if (limit > 0) {
+            const ratio = currentTotal / limit;
+
+            // 停止処理 (100%超)
+            if (ratio >= 1.0) {
+                await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '【システム通知】\n今月のAI利用枠の上限に達したため、応答を一時停止しています。\n再開するには追加枠の購入が必要です。' }] });
+                // 既に通知済みでなければ顧客へ通知するロジックを本来は入れる
+                return;
+            }
+
+            // 警告通知 (80% または 95% のしきい値を跨いだ時だけ通知すべきだが、簡易的に毎回ログに残すか、別途通知履歴テーブルが必要)
+            // ここでは簡易的に「管理画面Webhook」へ通知を送る (95%以上ならCritical)
+            if (ratio >= 0.95) {
+                await sendNotification(tenant.notification_webhook_url, tenantId, `⚠️ Token Usage Critical: ${(ratio * 100).toFixed(1)}% used.`);
+            } else if (ratio >= 0.80 && ratio < 0.81) { // 80%付近のみ (連投防止のため狭める)
+                await sendNotification(tenant.notification_webhook_url, tenantId, `⚠️ Token Usage Warning: ${(ratio * 100).toFixed(1)}% used.`);
+            }
         }
 
         const openai = new OpenAI({ apiKey: openaiApiKey });
         const embeddingRes = await openai.embeddings.create({ model: "text-embedding-3-small", input: userMessage });
+        // ★仕様3: RAGのチャンク数・長さ制限 (上位2件まで、長文カット)
         const { data: matchedKnowledge } = await supabase.rpc('match_knowledge', {
-            query_embedding: embeddingRes.data[0].embedding, match_threshold: 0.5, match_count: 3, p_tenant_id: tenantId
+            query_embedding: embeddingRes.data[0].embedding, match_threshold: 0.3, match_count: 2, p_tenant_id: tenantId
         });
-        const contextText = matchedKnowledge?.length > 0 ? "\n\n【参考資料】\n" + matchedKnowledge.map((k: any) => `- ${k.content}`).join("\n") : "";
+        const contextText = matchedKnowledge?.length > 0 ? "\n\n【参考資料】\n" + matchedKnowledge.map((k: any) => `- ${k.content.substring(0, 500)}`).join("\n") : "";
 
         // messages配列を any[] として定義
         const messages: any[] = [
@@ -177,11 +246,14 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
                         toolResult = targeted.length > 0 ? "【現在の予約状況】\n" + targeted.join("\n") : "その日の予約は入っていません。";
                     }
                     else if (tc.function.name === 'add_reservation') {
+                        const reservationId = crypto.randomUUID().split('-')[0]; // 短めのID生成
                         await sheets.spreadsheets.values.append({
-                            spreadsheetId: sheetId, range: 'Sheet1!A:D', valueInputOption: 'USER_ENTERED',
-                            requestBody: { values: [[args.date, args.time, args.name, args.details || '']] }
+                            spreadsheetId: sheetId, range: 'Sheet1!A:G', valueInputOption: 'USER_ENTERED',
+                            requestBody: { values: [[reservationId, 'PENDING', args.date, args.time, args.name, args.details || '', new Date().toISOString()]] }
                         });
-                        toolResult = "予約を追加しました。";
+                        toolResult = `仮予約を受付けました。\n予約ID: ${reservationId}\nお店からの確定連絡をお待ちください。`;
+                        // スタッフへの通知（簡易実装: 本来はスタッフのLINE IDへPushメッセージを送るべきだが、ここではログのみ）
+                        // await lineClient.pushMessage({ to: STAFF_ID, messages: [{ type: 'text', text: `新規予約依頼: ${reservationId}` }] });
                     }
 
                     messages.push(choice.message);

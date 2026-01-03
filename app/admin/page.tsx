@@ -115,6 +115,17 @@ export default async function AdminPage() {
                                 />
                             </div>
 
+                            {/* スタッフ登録パスコード */}
+                            <div style={{ marginBottom: '16px' }}>
+                                <label className="input-label">スタッフ登録パスコード (#STAFF 1234)</label>
+                                <input
+                                    name="staff_passcode"
+                                    defaultValue={tenant.staff_passcode || ''}
+                                    className="kb-input"
+                                    style={{ width: '100%', fontFamily: 'monospace' }} placeholder="1234"
+                                />
+                            </div>
+
                             {/* 有人切替キーワード */}
                             <div style={{ marginBottom: '16px' }}>
                                 <label className="input-label">有人切替キーワード (カンマ区切り)</label>

@@ -37,6 +37,7 @@ export async function updateTenant(formData: FormData) {
     const monthly_token_limit = parseInt(formData.get('monthly_token_limit') as string) || 0;
     const handoff_keywords = formData.get('handoff_keywords') as string;
     const google_sheet_id = formData.get('google_sheet_id') as string;
+    const staff_passcode = formData.get('staff_passcode') as string;
 
     const { error } = await supabase
         .from('tenants')
@@ -47,6 +48,7 @@ export async function updateTenant(formData: FormData) {
             monthly_token_limit,
             handoff_keywords,
             google_sheet_id,
+            staff_passcode,
             updated_at: new Date().toISOString()
         })
         .eq('tenant_id', tenant_id);
