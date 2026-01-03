@@ -258,6 +258,7 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
                 for (const toolCall of choice.message.tool_calls) {
                     const tc = toolCall as any;
                     const args = JSON.parse(tc.function.arguments);
+                    console.log(`[DEBUG] Tool Call: ${tc.function.name}, Args=${JSON.stringify(args)}, SheetID=${sheetId}`);
 
                     if (tc.function.name === 'check_schedule') {
                         const resp = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: 'Sheet1!A:D' });
