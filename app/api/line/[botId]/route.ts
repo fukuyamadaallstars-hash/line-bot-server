@@ -243,6 +243,8 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
         const completion = await openai.chat.completions.create(completionParams);
 
         const choice = completion.choices[0];
+        console.log(`[DEBUG] First AI Response: Content="${choice.message.content?.substring(0, 20)}...", ToolCalls=${choice.message.tool_calls ? choice.message.tool_calls.length : 0}`);
+
         let aiResponse = choice.message.content;
 
         if (choice.message.tool_calls) {
@@ -250,6 +252,7 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
             const sheetId = tenant.google_sheet_id;
 
             if (sheets && sheetId) {
+                console.log(`[DEBUG] Tool execution started for ${choice.message.tool_calls.length} calls.`);
                 for (const toolCall of choice.message.tool_calls) {
                     const tc = toolCall as any;
                     const args = JSON.parse(tc.function.arguments);
