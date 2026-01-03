@@ -304,11 +304,14 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
                 if (tenant.google_sheet_id) {
                     secondParams.tools = tools;
                 }
+                console.log(`[DEBUG] Calling OpenAI Second Pass...`);
                 const secondResponse = await openai.chat.completions.create(secondParams);
                 aiResponse = secondResponse.choices[0].message.content;
+                console.log(`[DEBUG] Second AI Response: ${aiResponse?.substring(0, 50)}...`);
             }
         }
 
+        console.log(`[DEBUG] Final Reply: ${aiResponse ? 'Content exists' : 'EMPTY'}`);
         await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: aiResponse || 'エラーが発生しました' }] });
         await supabase.from('usage_logs').insert({
             tenant_id: tenantId, user_id: userId, event_id: eventId,
@@ -316,7 +319,12 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
         });
 
     } catch (error: any) {
-        console.error(`[${tenantId}] Error:`, error);
+        console.error(`[${tenantId}] CRITICAL Error:`, error);
+        if (event.replyToken) {
+            try {
+                await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: 'システムエラーが発生しました。時間を置いてお試しください。' }] });
+            } catch (e) { console.error('Error sending fallback message:', e); }
+        }
     }
 }
 
