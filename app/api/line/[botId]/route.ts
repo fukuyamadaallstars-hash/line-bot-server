@@ -253,10 +253,11 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
 
             if (sheets && sheetId) {
                 console.log(`[DEBUG] Tool execution started for ${choice.message.tool_calls.length} calls.`);
+                let toolResult = "";
+
                 for (const toolCall of choice.message.tool_calls) {
                     const tc = toolCall as any;
                     const args = JSON.parse(tc.function.arguments);
-                    let toolResult = "";
 
                     if (tc.function.name === 'check_schedule') {
                         const resp = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: 'Sheet1!A:D' });
@@ -310,6 +311,13 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
                 console.log(`[DEBUG] Calling OpenAI Second Pass...`);
                 const secondResponse = await openai.chat.completions.create(secondParams);
                 aiResponse = secondResponse.choices[0].message.content;
+
+                // ★Fallback: AIが何も喋らなかった場合、Toolの結果をそのまま返す
+                if (!aiResponse && toolResult) {
+                    console.log(`[DEBUG] AI response empty. Using toolResult as fallback.`);
+                    aiResponse = toolResult;
+                }
+
                 console.log(`[DEBUG] Second AI Response: ${aiResponse?.substring(0, 50)}...`);
             }
         }
