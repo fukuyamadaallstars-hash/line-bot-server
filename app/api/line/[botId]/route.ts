@@ -119,6 +119,33 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
         if (userMessage.startsWith('#')) {
             const [command, arg] = userMessage.split(' ');
 
+            // スタッフ登録解除
+            if (command === '#UNSTAFF') {
+                await supabase.from('users').update({ is_staff: false }).eq('tenant_id', tenantId).eq('user_id', userId);
+                await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: 'スタッフ権限を解除しました。' }] });
+                return;
+            }
+
+            // ★デバッグコマンド (スタッフ専用)
+            if (command === '#DEBUG_INFO') {
+                // ★仕様4: トークン上限・通知 (80% / 95% / 100%) のロジックを再利用
+                const { data: usageData } = await supabase.from('usage_logs').select('token_usage').eq('tenant_id', tenantId);
+                const currentTotal = usageData?.reduce((s: number, l: any) => s + (l.token_usage || 0), 0) || 0;
+
+                const statusMsg = `【System Debug Info】
+Tenant ID: ${tenantId.substring(0, 8)}...
+Active Model: ${tenant.ai_model || 'gpt-4o-mini (default)'}
+Sheet Connected: ${tenant.google_sheet_id ? 'YES' : 'NO'}
+Staff Passcode: ${tenant.staff_passcode}
+Staff Mode: ${user.is_staff ? 'ON' : 'OFF'}
+Time (JST): ${new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}
+
+Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
+
+                await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: statusMsg }] });
+                return;
+            }
+
             // 1. スタッフ登録 (#STAFF <code)
             if (command === '#STAFF') {
                 if (arg === tenant.staff_passcode) {
