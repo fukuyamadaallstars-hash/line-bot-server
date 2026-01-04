@@ -95,8 +95,14 @@ export default async function AdminPage() {
 
                             {/* AIモデル選択 */}
                             <div style={{ marginBottom: '16px' }}>
-                                <label className="input-label">AIモデル (等級)</label>
-                                <select name="ai_model" defaultValue={tenant.ai_model || 'gpt-4o-mini'} className="kb-input" style={{ width: '100%' }}>
+                                <label className="input-label" htmlFor={`model-${tenant.tenant_id}`}>AIモデル (等級)</label>
+                                <select
+                                    name="ai_model"
+                                    id={`model-${tenant.tenant_id}`}
+                                    defaultValue={tenant.ai_model || 'gpt-4o-mini'}
+                                    className="kb-input"
+                                    style={{ width: '100%' }}
+                                >
                                     <option value="gpt-4o-mini">Standard (GPT-4o mini) - Default</option>
                                     <option value="gpt-4.1-mini">Pro (GPT-4.1 mini) - +¥10,000</option>
                                     <option value="gpt-5-mini">Enterprise (GPT-5 mini) - +¥25,000</option>
