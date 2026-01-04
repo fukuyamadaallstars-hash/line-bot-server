@@ -40,6 +40,8 @@ export async function updateTenant(formData: FormData) {
     const staff_passcode = formData.get('staff_passcode') as string;
     const ai_model = formData.get('ai_model') as string;
 
+    console.log('[Admin Update] Received:', { tenant_id, ai_model, display_name }); // ★受信データ確認ログ
+
     const { error } = await supabase
         .from('tenants')
         .update({
@@ -55,7 +57,12 @@ export async function updateTenant(formData: FormData) {
         })
         .eq('tenant_id', tenant_id);
 
-    if (error) throw new Error('更新に失敗しました');
+    if (error) {
+        console.error('[Admin Update] DB Error:', error); // ★DBエラー詳細ログ
+        throw new Error('更新に失敗しました: ' + error.message);
+    }
+
+    console.log('[Admin Update] Success');
     revalidatePath('/admin');
 }
 
