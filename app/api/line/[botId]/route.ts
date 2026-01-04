@@ -245,10 +245,15 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
         const openai = new OpenAI({ apiKey: openaiApiKey });
         const embeddingRes = await openai.embeddings.create({ model: "text-embedding-3-small", input: userMessage });
         // ★仕様3: RAGのチャンク数・長さ制限 (上位2件まで、長文カット)
+        // カテゴリも含めて取得するように修正 (RPC側が * で全カラム返すならOKだが、念のためcategoryを使う)
         const { data: matchedKnowledge } = await supabase.rpc('match_knowledge', {
             query_embedding: embeddingRes.data[0].embedding, match_threshold: 0.3, match_count: 2, p_tenant_id: tenantId
         });
-        const contextText = matchedKnowledge?.length > 0 ? "\n\n【参考資料】\n" + matchedKnowledge.map((k: any) => `- ${k.content.substring(0, 500)}`).join("\n") : "";
+
+        // カテゴリをバッジとして付与してAIに渡す
+        const contextText = matchedKnowledge?.length > 0 ?
+            "\n\n【参考資料】\n" + matchedKnowledge.map((k: any) => `- [${k.category || 'FAQ'}] ${k.content.substring(0, 500)}`).join("\n")
+            : "";
 
         // messages配列を any[] として定義
         const now = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
