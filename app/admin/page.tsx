@@ -157,7 +157,20 @@ export default async function AdminPage() {
                             <div className="kb-list">
                                 {tenant.knowledge_base?.map((kb: any) => (
                                     <div key={kb.id} className="kb-item">
-                                        <span className="kb-content">{kb.content}</span>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                                            <span style={{
+                                                fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold',
+                                                background: kb.category === 'OFFER' ? '#e0f2fe' :
+                                                    kb.category === 'PRICE' ? '#dcfce7' :
+                                                        kb.category === 'PROCESS' ? '#fef9c3' :
+                                                            kb.category === 'POLICY' ? '#fee2e2' :
+                                                                kb.category === 'CONTEXT' ? '#f3f4f6' : '#fef3c7',
+                                                color: '#334155'
+                                            }}>
+                                                {kb.category || 'FAQ'}
+                                            </span>
+                                            <span className="kb-content" style={{ flex: 1, margin: 0 }}>{kb.content}</span>
+                                        </div>
                                         <form action={deleteKnowledge}>
                                             <input type="hidden" name="id" value={kb.id} />
                                             <button type="submit" className="kb-delete-btn">×</button>
@@ -165,10 +178,20 @@ export default async function AdminPage() {
                                     </div>
                                 ))}
                             </div>
-                            <form action={addKnowledge} className="kb-add-form">
+                            <form action={addKnowledge} className="kb-add-form" style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
                                 <input type="hidden" name="tenant_id" value={tenant.tenant_id} />
-                                <input name="content" className="kb-input" placeholder="知識を一行追加..." required />
-                                <button type="submit" className="btn btn-outline">＋</button>
+                                <div style={{ display: 'flex', flexDirection: 'column', flex: 1, gap: '8px' }}>
+                                    <select name="category" className="kb-input" style={{ width: '100%', fontSize: '0.85rem' }} required defaultValue="FAQ">
+                                        <option value="OFFER">OFFER (提供内容)</option>
+                                        <option value="PRICE">PRICE (料金・支払い)</option>
+                                        <option value="PROCESS">PROCESS (進め方・手順)</option>
+                                        <option value="POLICY">POLICY (ルール・禁止事項)</option>
+                                        <option value="CONTEXT">CONTEXT (基本情報・営業時間)</option>
+                                        <option value="FAQ">FAQ (その他・Q&A)</option>
+                                    </select>
+                                    <input name="content" className="kb-input" placeholder="知識の内容を入力..." required style={{ width: '100%' }} />
+                                </div>
+                                <button type="submit" className="btn btn-outline" style={{ height: 'auto', alignSelf: 'stretch' }}>＋</button>
                             </form>
                         </div>
                     </div>
