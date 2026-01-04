@@ -99,6 +99,7 @@ export default async function AdminPage() {
                                 <select
                                     name="ai_model"
                                     id={`model-${tenant.tenant_id}`}
+                                    key={tenant.ai_model || 'default'}
                                     defaultValue={tenant.ai_model || 'gpt-4o-mini'}
                                     className="kb-input"
                                     style={{ width: '100%' }}
