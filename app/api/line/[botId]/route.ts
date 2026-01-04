@@ -231,8 +231,10 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
         ];
 
         // ★修正: 明示的にパラメータオブジェクトを構築し、toolsがない場合はキー自体を含めない
+        // モデルはテナント設定を使用 (未設定なら gpt-4o-mini)
+        const selectedModel = tenant.ai_model || "gpt-4o-mini";
         const completionParams: any = {
-            model: "gpt-4o-mini",
+            model: selectedModel,
             messages: completionMessages,
         };
 
@@ -303,7 +305,7 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
                 // もし2回目以降でToolを使わせたくない場合は tools を外すが、会話の流れ上は一貫性を持たせるため、
                 // 基本的には同じ設定で良いが、念のため再定義する。
                 const secondParams: any = {
-                    model: "gpt-4o-mini",
+                    model: selectedModel,
                     messages: completionMessages,
                 };
                 if (tenant.google_sheet_id) {
