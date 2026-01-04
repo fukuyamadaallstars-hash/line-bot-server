@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import './admin.css';
-import { updateTenant, addKnowledge, deleteKnowledge, resumeAi } from './actions';
+import { updateTenant, addKnowledge, deleteKnowledge, resumeAi, quickAddToken } from './actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -154,9 +154,69 @@ export default async function AdminPage() {
                                 />
                             </div>
 
+                            {/* 契約・請求管理セクション (New!) */}
+                            <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', marginBottom: '16px', border: '1px solid #e2e8f0' }}>
+                                <h4 style={{ margin: '0 0 12px 0', fontSize: '0.9rem', color: '#475569' }}>Billing & Contract</h4>
+
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                                    <div>
+                                        <label className="input-label">Base Plan</label>
+                                        <select name="plan" defaultValue={tenant.plan || 'Lite'} className="kb-input" style={{ width: '100%' }}>
+                                            <option value="Lite">Lite (¥12,800)</option>
+                                            <option value="Standard">Standard (¥29,800)</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="input-label">Model Option</label>
+                                        <select name="model_option" defaultValue={tenant.model_option || 'None'} className="kb-input" style={{ width: '100%' }}>
+                                            <option value="None">None (+0)</option>
+                                            <option value="ModelA">Model A (+10k)</option>
+                                            <option value="ModelB">Model B (+25k)</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div style={{ marginBottom: '8px' }}>
+                                    <label className="input-label">Monthly Token Add-on</label>
+                                    <select name="additional_token_plan" defaultValue={tenant.additional_token_plan || 'None'} className="kb-input" style={{ width: '100%' }}>
+                                        <option value="None">None</option>
+                                        <option value="1M">+1M (+¥3,000)</option>
+                                        <option value="2M">+2M (+¥5,500)</option>
+                                        <option value="5M">+5M (+¥12,000)</option>
+                                    </select>
+                                </div>
+
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                                    <div>
+                                        <label className="input-label">Start Date</label>
+                                        <input type="date" name="contract_start_date" defaultValue={tenant.contract_start_date} className="kb-input" style={{ width: '100%' }} />
+                                    </div>
+                                    <div>
+                                        <label className="input-label">Next Billing</label>
+                                        <input type="date" name="next_billing_date" defaultValue={tenant.next_billing_date} className="kb-input" style={{ width: '100%', fontWeight: 'bold', color: '#0f172a' }} />
+                                    </div>
+                                </div>
+                            </div>
+
                             <textarea name="system_prompt" defaultValue={tenant.system_prompt} className="prompt-textarea" style={{ marginBottom: '12px' }} />
-                            <button type="submit" className="btn btn-primary" style={{ width: '100%', marginBottom: '24px' }}>設定を保存</button>
+
+                            <div style={{ display: 'flex', gap: '8px', marginBottom: '24px' }}>
+                                <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>設定を保存</button>
+                            </div>
                         </form>
+
+                        {/* 緊急アクション */}
+                        <div style={{ marginBottom: '24px' }}>
+                            <form action={quickAddToken} style={{ display: 'inline-block' }}>
+                                <input type="hidden" name="tenant_id" value={tenant.tenant_id} />
+                                <button type="submit" style={{
+                                    background: '#fff7ed', border: '1px solid #fdba74', color: '#c2410c',
+                                    padding: '6px 12px', borderRadius: '6px', fontSize: '0.8rem', cursor: 'pointer'
+                                }}>
+                                    ⚡ +1M Token (Emergency)
+                                </button>
+                            </form>
+                        </div>
 
                         {/* ナレッジ管理 */}
                         <div className="kb-section">

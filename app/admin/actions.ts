@@ -40,7 +40,14 @@ export async function updateTenant(formData: FormData) {
     const staff_passcode = formData.get('staff_passcode') as string;
     const ai_model = formData.get('ai_model') as string;
 
-    console.log('[Admin Update] Received:', { tenant_id, ai_model, display_name }); // ★受信データ確認ログ
+    // 契約・請求情報
+    const plan = formData.get('plan') as string;
+    const model_option = formData.get('model_option') as string;
+    const additional_token_plan = formData.get('additional_token_plan') as string;
+    const contract_start_date = formData.get('contract_start_date') as string || null;
+    const next_billing_date = formData.get('next_billing_date') as string || null;
+
+    console.log('[Admin Update] Received:', { tenant_id, ai_model, plan, contract_start_date }); // ★受信データ確認ログ
 
     const { error } = await supabase
         .from('tenants')
@@ -53,6 +60,12 @@ export async function updateTenant(formData: FormData) {
             google_sheet_id,
             staff_passcode,
             ai_model,
+            // 契約情報
+            plan,
+            model_option,
+            additional_token_plan,
+            contract_start_date,
+            next_billing_date,
             updated_at: new Date().toISOString()
         })
         .eq('tenant_id', tenant_id);
@@ -63,6 +76,23 @@ export async function updateTenant(formData: FormData) {
     }
 
     console.log('[Admin Update] Success');
+    revalidatePath('/admin');
+}
+
+// ★緊急用: トークン単発追加 (+1M)
+export async function quickAddToken(formData: FormData) {
+    await verifyAdmin();
+    const tenant_id = formData.get('tenant_id') as string;
+
+    // 現在の設定を取得
+    const { data: tenant } = await supabase.from('tenants').select('monthly_token_limit').eq('tenant_id', tenant_id).single();
+    if (!tenant) throw new Error('Tenant not found');
+
+    const newLimit = (tenant.monthly_token_limit || 0) + 1000000;
+
+    const { error } = await supabase.from('tenants').update({ monthly_token_limit: newLimit }).eq('tenant_id', tenant_id);
+    if (error) throw new Error('追加エラー');
+
     revalidatePath('/admin');
 }
 
