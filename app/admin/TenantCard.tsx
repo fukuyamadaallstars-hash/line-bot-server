@@ -6,6 +6,7 @@ import { updateTenant, addKnowledge, deleteKnowledge, resumeAi, quickAddToken, a
 export default function TenantCard({ tenant }: { tenant: any }) {
     const [isOpen, setIsOpen] = useState(false);
     const [activeTab, setActiveTab] = useState('basic'); // basic | billing | knowledge
+    const [kbFilter, setKbFilter] = useState('ALL');
 
     return (
         <div className="bot-card" style={{ transition: 'all 0.3s ease' }}>
@@ -294,22 +295,65 @@ export default function TenantCard({ tenant }: { tenant: any }) {
                     )}
                     {activeTab === 'knowledge' && (
                         <div className="kb-section">
-                            <div className="kb-list" style={{ maxHeight: '300px', overflowY: 'auto' }}>
-                                {tenant.knowledge_base?.map((kb: any) => (
-                                    <div key={kb.id} className="kb-item">
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <span style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', background: '#e0f2fe', color: '#0369a1' }}>{kb.category || 'FAQ'}</span>
-                                            <span style={{ flex: 1, fontSize: '0.85rem' }}>{kb.content}</span>
-                                            <form action={deleteKnowledge}><input type="hidden" name="id" value={kb.id} /><button type="submit" className="kb-delete-btn">×</button></form>
-                                        </div>
-                                    </div>
+                            {/* Filter Buttons */}
+                            <div style={{ display: 'flex', gap: '6px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                                <button
+                                    onClick={() => setKbFilter('ALL')}
+                                    style={{
+                                        padding: '4px 10px', borderRadius: '16px', border: '1px solid #e2e8f0', cursor: 'pointer', fontSize: '0.75rem',
+                                        background: kbFilter === 'ALL' ? 'var(--primary)' : 'white',
+                                        color: kbFilter === 'ALL' ? 'white' : '#64748b'
+                                    }}
+                                >
+                                    すべて
+                                </button>
+                                {['FAQ', 'OFFER', 'PRICE', 'PROCESS', 'POLICY', 'CONTEXT'].map(cat => (
+                                    <button
+                                        key={cat}
+                                        onClick={() => setKbFilter(cat)}
+                                        style={{
+                                            padding: '4px 10px', borderRadius: '16px', border: '1px solid #e2e8f0', cursor: 'pointer', fontSize: '0.75rem',
+                                            background: kbFilter === cat ? '#e0f2fe' : 'white',
+                                            color: kbFilter === cat ? '#0369a1' : '#64748b',
+                                            borderColor: kbFilter === cat ? '#bae6fd' : '#e2e8f0'
+                                        }}
+                                    >
+                                        {cat}
+                                    </button>
                                 ))}
                             </div>
-                            <form action={addKnowledge} className="kb-add-form" style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+
+                            <div className="kb-list" style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                                {(tenant.knowledge_base || [])
+                                    .filter((kb: any) => kbFilter === 'ALL' || (kb.category || 'FAQ') === kbFilter)
+                                    .map((kb: any) => (
+                                        <div key={kb.id} className="kb-item">
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <span style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', background: '#e0f2fe', color: '#0369a1' }}>{kb.category || 'FAQ'}</span>
+                                                <span style={{ flex: 1, fontSize: '0.85rem' }}>{kb.content}</span>
+                                                <form action={deleteKnowledge}><input type="hidden" name="id" value={kb.id} /><button type="submit" className="kb-delete-btn">×</button></form>
+                                            </div>
+                                        </div>
+                                    ))}
+                                {(tenant.knowledge_base || []).filter((kb: any) => kbFilter === 'ALL' || (kb.category || 'FAQ') === kbFilter).length === 0 && (
+                                    <div style={{ padding: '20px', textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem' }}>
+                                        このカテゴリーのナレッジはありません。
+                                    </div>
+                                )}
+                            </div>
+
+                            <form action={addKnowledge} className="kb-add-form" style={{ display: 'flex', gap: '8px', marginTop: '12px', borderTop: '2px solid #f1f5f9', paddingTop: '16px' }}>
                                 <input type="hidden" name="tenant_id" value={tenant.tenant_id} />
                                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                    <select name="category" className="kb-input" style={{ width: '100%' }}><option value="FAQ">FAQ</option><option value="OFFER">OFFER</option><option value="PRICE">PRICE</option><option value="PROCESS">PROCESS</option><option value="POLICY">POLICY</option><option value="CONTEXT">CONTEXT</option></select>
-                                    <input name="content" className="kb-input" placeholder="Knowledge content..." required style={{ width: '100%' }} />
+                                    <select name="category" className="kb-input" style={{ width: '100%' }} defaultValue={kbFilter !== 'ALL' ? kbFilter : 'FAQ'}>
+                                        <option value="FAQ">FAQ (よくある質問)</option>
+                                        <option value="OFFER">OFFER (キャンペーン)</option>
+                                        <option value="PRICE">PRICE (料金・コース)</option>
+                                        <option value="PROCESS">PROCESS (予約・流れ)</option>
+                                        <option value="POLICY">POLICY (キャンセル規定)</option>
+                                        <option value="CONTEXT">CONTEXT (店舗特徴・こだわり)</option>
+                                    </select>
+                                    <input name="content" className="kb-input" placeholder="新しいナレッジを追加..." required style={{ width: '100%' }} />
                                 </div>
                                 <button type="submit" className="btn btn-outline" style={{ height: 'auto' }}>＋</button>
                             </form>
