@@ -287,12 +287,18 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
 
             if (sheets && sheetId) {
                 console.log(`[DEBUG] Tool execution started for ${choice.message.tool_calls.length} calls.`);
+
+                // Assistantのメッセージ（ToolCall要求）は一度だけ履歴に追加する
+                completionMessages.push(choice.message);
+
                 let toolResult = "";
 
                 for (const toolCall of choice.message.tool_calls) {
                     const tc = toolCall as any;
                     const args = JSON.parse(tc.function.arguments);
                     console.log(`[DEBUG] Tool Call: ${tc.function.name}, Args=${JSON.stringify(args)}, SheetID=${sheetId}`);
+
+                    // ... (中略) ...
 
                     if (tc.function.name === 'check_schedule') {
                         const resp = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: 'Sheet1!A:D' });
@@ -303,7 +309,7 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
                         toolResult = targeted.length > 0 ? "【現在の予約状況】\n" + targeted.join("\n") : "その日の予約は入っていません。";
                     }
                     else if (tc.function.name === 'add_reservation') {
-                        const reservationId = crypto.randomUUID().split('-')[0]; // 短めのID生成
+                        const reservationId = crypto.randomUUID().split('-')[0];
                         const jstTime = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
                         await sheets.spreadsheets.values.append({
                             spreadsheetId: sheetId, range: 'Sheet1', valueInputOption: 'USER_ENTERED',
@@ -311,12 +317,9 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
                         });
                         toolResult = `仮予約を受付けました。\n予約ID: ${reservationId}\nお店からの確定連絡をお待ちください。`;
 
-                        /* 通知機能復活 */
-                        // スタッフへの通知 (Webhook)
                         const staffNotifyMsg = `【新規予約依頼】\n予約ID: ${reservationId}\n日時: ${args.date} ${args.time}\nお名前: ${args.name}\n内容: ${args.details || '-'}\n\n確定する場合:\n#CONFIRM ${reservationId}\n\nキャンセルする場合:\n#CANCEL ${reservationId}`;
                         await sendNotification(tenant.notification_webhook_url, tenantId, staffNotifyMsg);
 
-                        // スタッフへの通知 (LINE Push - is_staffなユーザー全員へ)
                         const { data: staffMembers } = await supabase.from('users').select('user_id').eq('tenant_id', tenantId).eq('is_staff', true);
                         if (staffMembers && staffMembers.length > 0) {
                             for (const sm of staffMembers) {
@@ -330,7 +333,7 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
                         }
                     }
 
-                    completionMessages.push(choice.message);
+                    // Toolの実行結果メッセージを追加
                     completionMessages.push({ role: "tool", content: toolResult, tool_call_id: toolCall.id });
                 }
                 // 2回目の呼び出し時も、同様に条件分岐済みのパラメータを使用する(ただしmessagesは更新後のもの)
