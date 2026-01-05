@@ -44,14 +44,22 @@ export async function updateTenant(formData: FormData) {
         'display_name', 'system_prompt', 'handoff_keywords',
         'google_sheet_id', 'staff_passcode', 'ai_model',
         'plan', 'model_option', 'additional_token_plan',
-        'contract_start_date', 'next_billing_date'
+        'contract_start_date', 'next_billing_date',
+        // Finance & Contact Info
+        'company_name', 'billing_contact_name', 'billing_email',
+        'billing_phone', 'billing_address', 'billing_department', 'billing_subject',
+        'billing_status', 'bank_transfer_name'
+    ];
+
+    const numberFields = [
+        'monthly_token_limit', 'billing_cycle_day', 'payment_term_days',
+        'kb_limit', 'kb_update_limit'
     ];
 
     stringFields.forEach(field => {
         if (formData.has(field)) {
             const value = formData.get(field);
-            // Input type="date" returns empty string if not set, which we might want to treat as null for DB date fields
-            if ((field === 'contract_start_date' || field === 'next_billing_date') && value === '') {
+            if ((field.includes('date')) && value === '') {
                 updates[field] = null;
             } else {
                 updates[field] = value as string;
@@ -59,13 +67,32 @@ export async function updateTenant(formData: FormData) {
         }
     });
 
-    if (formData.has('monthly_token_limit')) {
-        updates['monthly_token_limit'] = parseInt(formData.get('monthly_token_limit') as string) || 0;
-    }
+    numberFields.forEach(field => {
+        if (formData.has(field)) {
+            updates[field] = parseInt(formData.get(field) as string) || 0;
+        }
+    });
 
     // Handle checkboxes safely using context
     if (context === 'basic') {
         updates['is_active'] = formData.get('is_active') === 'on';
+    }
+
+    // Handle booleans (reservation_enabled)
+    if (formData.has('reservation_enabled_present')) { // Check helper field to know if checkbox was visible
+        updates['reservation_enabled'] = formData.get('reservation_enabled') === 'on';
+    }
+
+    // Handle JSON fields (if sent as JSON strings)
+    if (formData.has('next_contract_changes')) {
+        try {
+            updates['next_contract_changes'] = JSON.parse(formData.get('next_contract_changes') as string);
+        } catch (e) { console.error('JSON parse error', e); }
+    }
+    if (formData.has('beta_perks')) {
+        try {
+            updates['beta_perks'] = JSON.parse(formData.get('beta_perks') as string);
+        } catch (e) { console.error('JSON parse error', e); }
     }
 
     console.log('[Admin Update] Tenant:', tenant_id, 'Context:', context, 'Updates:', updates);
@@ -132,5 +159,46 @@ export async function resumeAi(formData: FormData) {
     const user_id = formData.get('user_id') as string;
     const { error } = await supabase.from('users').update({ is_handoff_active: false, status: 'normal' }).eq('tenant_id', tenant_id).eq('user_id', user_id);
     if (error) throw new Error('再開エラー');
+    revalidatePath('/admin');
+}
+
+export async function addTokenPurchase(formData: FormData) {
+    await verifyAdmin();
+    const tenant_id = formData.get('tenant_id') as string;
+    const amount = parseInt(formData.get('amount') as string) || 1000000;
+    const price = parseInt(formData.get('price') as string) || 4500;
+    const status = formData.get('status') as string || 'pending';
+
+    const { error } = await supabase.from('token_purchases').insert({
+        tenant_id,
+        amount,
+        price,
+        status,
+        purchase_date: new Date().toISOString()
+    });
+
+    if (error) throw new Error('購入記録の追加に失敗: ' + error.message);
+    revalidatePath('/admin');
+}
+
+// TODO: Implement Invoice Actions properly
+export async function createInvoiceStub(formData: FormData) {
+    await verifyAdmin();
+    const tenant_id = formData.get('tenant_id') as string;
+
+    // Simple draft generation
+    const target_month = new Date().toISOString().slice(0, 7); // YYYY-MM
+    const invoice_number = `INV-${target_month}-${Math.floor(Math.random() * 1000)}`;
+
+    const { error } = await supabase.from('invoices').insert({
+        tenant_id,
+        invoice_number,
+        target_month,
+        amount_total: 0,
+        status: 'draft',
+        details: []
+    });
+
+    if (error) throw new Error('請求書作成エラー: ' + error.message);
     revalidatePath('/admin');
 }

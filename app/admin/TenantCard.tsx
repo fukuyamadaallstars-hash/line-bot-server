@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { updateTenant, addKnowledge, deleteKnowledge, resumeAi, quickAddToken } from './actions';
+import { updateTenant, addKnowledge, deleteKnowledge, resumeAi, quickAddToken, addTokenPurchase, createInvoiceStub } from './actions';
 
 export default function TenantCard({ tenant }: { tenant: any }) {
     const [isOpen, setIsOpen] = useState(false);
@@ -77,8 +77,8 @@ export default function TenantCard({ tenant }: { tenant: any }) {
             {isOpen && (
                 <div style={{ marginTop: '24px', borderTop: '1px solid #e2e8f0', paddingTop: '16px' }}>
                     {/* タブメニュー */}
-                    <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', borderBottom: '1px solid #e2e8f0' }}>
-                        {['basic', 'billing', 'knowledge'].map(tab => (
+                    <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', borderBottom: '1px solid #e2e8f0', flexWrap: 'wrap' }}>
+                        {['basic', 'billing', 'contract', 'purchases', 'invoices', 'knowledge'].map(tab => (
                             <button
                                 key={tab}
                                 onClick={() => setActiveTab(tab)}
@@ -129,6 +129,30 @@ export default function TenantCard({ tenant }: { tenant: any }) {
                                 <label htmlFor={`active-${tenant.tenant_id}`}>Bot Active</label>
                             </div>
 
+                            <div style={{ borderTop: '1px solid #eee', paddingTop: '12px', marginTop: '12px' }}>
+                                <h4 style={{ margin: '0 0 10px 0', fontSize: '0.9rem', color: '#64748b' }}>Billing Contact (宛名)</h4>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+                                    <div><label className="input-label">Company Name</label><input name="company_name" defaultValue={tenant.company_name} className="kb-input" style={{ width: '100%' }} placeholder="株式会社..." /></div>
+                                    <div><label className="input-label">Subject (件名)</label><input name="billing_subject" defaultValue={tenant.billing_subject} className="kb-input" style={{ width: '100%' }} placeholder="〇〇店" /></div>
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+                                    <div><label className="input-label">Contact Name</label><input name="billing_contact_name" defaultValue={tenant.billing_contact_name} className="kb-input" style={{ width: '100%' }} /></div>
+                                    <div><label className="input-label">Department</label><input name="billing_department" defaultValue={tenant.billing_department} className="kb-input" style={{ width: '100%' }} /></div>
+                                </div>
+                                <div className="form-group" style={{ marginBottom: '12px' }}>
+                                    <label className="input-label">Email (Bill Only)</label>
+                                    <input name="billing_email" defaultValue={tenant.billing_email} className="kb-input" style={{ width: '100%' }} placeholder="bill@..." />
+                                </div>
+                                <div className="form-group" style={{ marginBottom: '12px' }}>
+                                    <label className="input-label">Address</label>
+                                    <input name="billing_address" defaultValue={tenant.billing_address} className="kb-input" style={{ width: '100%' }} placeholder="〒..." />
+                                </div>
+                                <div className="form-group" style={{ marginBottom: '12px' }}>
+                                    <label className="input-label">Phone (Bill Only)</label>
+                                    <input name="billing_phone" defaultValue={tenant.billing_phone} className="kb-input" style={{ width: '100%' }} placeholder="03-..." />
+                                </div>
+                            </div>
+
                             <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>Save Basic Settings</button>
                         </form>
                     )}
@@ -152,6 +176,16 @@ export default function TenantCard({ tenant }: { tenant: any }) {
                                         <div><label className="input-label">Next Billing</label><input type="date" name="next_billing_date" defaultValue={tenant.next_billing_date} className="kb-input" style={{ width: '100%' }} /></div>
                                     </div>
 
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+                                        <div><label className="input-label">Cycle Day</label><input type="number" name="billing_cycle_day" defaultValue={tenant.billing_cycle_day} className="kb-input" style={{ width: '100%' }} placeholder="1" /></div>
+                                        <div><label className="input-label">Term Days</label><input type="number" name="payment_term_days" defaultValue={tenant.payment_term_days} className="kb-input" style={{ width: '100%' }} placeholder="10" /></div>
+                                        <div><label className="input-label">Status</label><select name="billing_status" defaultValue={tenant.billing_status || 'active'} className="kb-input" style={{ width: '100%' }}><option value="active">Active</option><option value="suspended">Suspended</option></select></div>
+                                    </div>
+                                    <div style={{ marginBottom: '12px' }}>
+                                        <label className="input-label">Transfer Name (振込名義)</label>
+                                        <input name="bank_transfer_name" defaultValue={tenant.bank_transfer_name} className="kb-input" style={{ width: '100%' }} placeholder="1234-COMPANY" />
+                                    </div>
+
                                     {/* 安全のためHiddenで他情報も送る必要はなくなりました (部分更新対応済み) */}
 
                                     <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>Save Billing Info</button>
@@ -169,7 +203,88 @@ export default function TenantCard({ tenant }: { tenant: any }) {
                         </div>
                     )}
 
-                    {/* Knowledge タブ */}
+                    {/* Contract Tab */}
+                    {activeTab === 'contract' && (
+                        <form action={updateTenant}>
+                            <input type="hidden" name="tenant_id" value={tenant.tenant_id} />
+                            <input type="hidden" name="__context" value="contract" />
+
+                            <div className="stat-box" style={{ background: '#f0f9ff', border: '1px solid #bae6fd', marginBottom: '16px' }}>
+                                <h4 style={{ margin: '0 0 8px 0', color: '#0369a1' }}>Current Contract</h4>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.85rem' }}>
+                                    <div>Plan: <strong>{tenant.plan || 'Lite'}</strong></div>
+                                    <div>Model: <strong>{tenant.model_option || 'None'}</strong></div>
+                                    <div>Updates: <strong>{tenant.kb_update_limit || 1}/mo</strong></div>
+                                    <div>KB Limit: <strong>{tenant.kb_limit}</strong></div>
+                                </div>
+                            </div>
+
+                            <div className="form-group" style={{ marginBottom: '16px' }}>
+                                <label className="input-label">Next Contract Changes (JSON Queue)</label>
+                                <textarea name="next_contract_changes" defaultValue={JSON.stringify(tenant.next_contract_changes || {}, null, 2)} className="prompt-textarea" style={{ height: '80px', fontFamily: 'monospace' }} />
+                                <div style={{ fontSize: '0.7rem', color: '#64748b' }}>{"Example: { \"plan\": \"Standard\", \"apply_date\": \"2025-02-01\" }"}</div>
+                            </div>
+
+                            <div className="form-group" style={{ marginBottom: '16px' }}>
+                                <label className="input-label">Beta Perks (JSON)</label>
+                                <textarea name="beta_perks" defaultValue={JSON.stringify(tenant.beta_perks || {}, null, 2)} className="prompt-textarea" style={{ height: '80px', fontFamily: 'monospace' }} />
+                            </div>
+
+                            <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>Save Contract Queue</button>
+                        </form>
+                    )}
+
+                    {/* Purchases Tab */}
+                    {activeTab === 'purchases' && (
+                        <div>
+                            <div className="kb-list" style={{ maxHeight: '200px', overflowY: 'auto', marginBottom: '16px' }}>
+                                {(tenant.token_purchases || []).map((p: any) => (
+                                    <div key={p.id} className="kb-item">
+                                        <div style={{ flex: 1 }}>
+                                            <div style={{ fontWeight: 'bold' }}>+{p.amount?.toLocaleString()} Tokens</div>
+                                            <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{new Date(p.purchase_date).toLocaleDateString()} - ¥{p.price?.toLocaleString()}</div>
+                                        </div>
+                                        <span className={`status-badge ${p.status === 'paid' ? 'status-active' : 'status-inactive'}`}>{p.status}</span>
+                                    </div>
+                                ))}
+                                {(tenant.token_purchases || []).length === 0 && <div style={{ padding: '8px', color: '#94a3b8', fontSize: '0.8rem' }}>No purchases yet.</div>}
+                            </div>
+
+                            <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px' }}>
+                                <h5 style={{ margin: '0 0 8px 0', fontSize: '0.9rem' }}>Record New Purchase</h5>
+                                <form action={addTokenPurchase}>
+                                    <input type="hidden" name="tenant_id" value={tenant.tenant_id} />
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                                        <input name="amount" type="number" defaultValue={1000000} className="kb-input" placeholder="Amount" />
+                                        <input name="price" type="number" defaultValue={4500} className="kb-input" placeholder="Price (¥)" />
+                                    </div>
+                                    <button type="submit" className="btn btn-outline" style={{ width: '100%', fontSize: '0.8rem' }}>+ Record Purchase</button>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Invoices Tab */}
+                    {activeTab === 'invoices' && (
+                        <div>
+                            <div className="kb-list" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                                {(tenant.invoices || []).map((inv: any) => (
+                                    <div key={inv.id} className="kb-item">
+                                        <div style={{ flex: 1 }}>
+                                            <div style={{ fontWeight: 'bold' }}>{inv.invoice_number}</div>
+                                            <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{inv.target_month} - ¥{inv.amount_total?.toLocaleString()}</div>
+                                        </div>
+                                        <span className={`status-badge ${inv.status === 'paid' ? 'status-active' : 'status-inactive'}`}>{inv.status}</span>
+                                    </div>
+                                ))}
+                                {(tenant.invoices || []).length === 0 && <div style={{ padding: '8px', color: '#94a3b8', fontSize: '0.8rem' }}>No invoices yet.</div>}
+                            </div>
+                            <form action={createInvoiceStub}>
+                                <input type="hidden" name="tenant_id" value={tenant.tenant_id} />
+                                <button type="submit" className="btn btn-outline" style={{ width: '100%', fontSize: '0.8rem' }}>+ Create Draft Invoice</button>
+                            </form>
+                        </div>
+                    )}
                     {activeTab === 'knowledge' && (
                         <div className="kb-section">
                             <div className="kb-list" style={{ maxHeight: '300px', overflowY: 'auto' }}>

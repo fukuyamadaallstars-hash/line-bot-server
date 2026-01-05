@@ -18,7 +18,7 @@ async function getTenantsFullData() {
 
     // テナント全取得
     const { data: tenants } = await supabase.from('tenants')
-        .select('*, knowledge_base(*)')
+        .select('*, knowledge_base(*), token_purchases(*), invoices(*)')
         .order('created_at', { ascending: false });
 
     if (!tenants) return [];
