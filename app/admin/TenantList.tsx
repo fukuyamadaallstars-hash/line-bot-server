@@ -32,7 +32,7 @@ export default function TenantList({ tenants }: { tenants: any[] }) {
             <div style={{ marginBottom: '24px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                 <input
                     type="text"
-                    placeholder="Search tenants (Name, ID, Sheet)..."
+                    placeholder="検索 (店名, ID, Sheet)..."
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     style={{
@@ -49,20 +49,20 @@ export default function TenantList({ tenants }: { tenants: any[] }) {
                         onClick={() => setFilter('all')}
                         className={`btn ${filter === 'all' ? 'btn-primary' : 'btn-outline'}`}
                     >
-                        All
+                        すべて
                     </button>
                     <button
                         onClick={() => setFilter('handoff')}
                         className={`btn ${filter === 'handoff' ? 'btn-primary' : 'btn-outline'}`}
                         style={{ borderColor: filter === 'handoff' ? '#ef4444' : 'var(--border)', background: filter === 'handoff' ? '#ef4444' : 'white', color: filter === 'handoff' ? 'white' : '#ef4444' }}
                     >
-                        ⚠️ Needs Attention ({tenants.filter(t => t.handoffUsers?.length > 0).length})
+                        ⚠️ 要対応 ({tenants.filter(t => t.handoffUsers?.length > 0).length})
                     </button>
                     <button
                         onClick={() => setFilter('active')}
                         className={`btn ${filter === 'active' ? 'btn-primary' : 'btn-outline'}`}
                     >
-                        Active Only
+                        稼働中のみ
                     </button>
                 </div>
             </div>
@@ -74,7 +74,7 @@ export default function TenantList({ tenants }: { tenants: any[] }) {
                     ))
                 ) : (
                     <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
-                        No tenants found matching your criteria.
+                        条件に一致するテナントが見つかりません。
                     </div>
                 )}
             </div>

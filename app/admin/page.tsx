@@ -66,7 +66,7 @@ export default async function AdminPage() {
             <header className="header" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '20px', marginBottom: '32px' }}>
                 <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <h1 style={{ fontSize: '2rem' }}>Bot Management Center</h1>
+                        <h1 style={{ fontSize: '2rem' }}>Bot 管理センター</h1>
                         <span style={{ background: '#22c55e', color: 'white', padding: '4px 10px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 'bold' }}>SYSTEM SECURE</span>
                     </div>
                     <p style={{ color: 'var(--text-muted)', marginTop: '8px' }}>全テナントの監視・契約管理・ナレッジ更新</p>
