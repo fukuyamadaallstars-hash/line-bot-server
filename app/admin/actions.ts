@@ -31,51 +31,55 @@ export async function updateTenant(formData: FormData) {
     await verifyAdmin();
 
     const tenant_id = formData.get('tenant_id') as string;
-    const display_name = formData.get('display_name') as string;
-    const system_prompt = formData.get('system_prompt') as string;
-    const is_active = formData.get('is_active') === 'on';
-    const monthly_token_limit = parseInt(formData.get('monthly_token_limit') as string) || 0;
-    const handoff_keywords = formData.get('handoff_keywords') as string;
-    const google_sheet_id = formData.get('google_sheet_id') as string;
-    const staff_passcode = formData.get('staff_passcode') as string;
-    const ai_model = formData.get('ai_model') as string;
+    if (!tenant_id) throw new Error('Tenant ID required');
 
-    // 契約・請求情報
-    const plan = formData.get('plan') as string;
-    const model_option = formData.get('model_option') as string;
-    const additional_token_plan = formData.get('additional_token_plan') as string;
-    const contract_start_date = formData.get('contract_start_date') as string || null;
-    const next_billing_date = formData.get('next_billing_date') as string || null;
+    const context = formData.get('__context') as string;
 
-    console.log('[Admin Update] Received:', { tenant_id, ai_model, plan, contract_start_date }); // ★受信データ確認ログ
+    const updates: any = {
+        updated_at: new Date().toISOString()
+    };
+
+    // List of text/select fields to check
+    const stringFields = [
+        'display_name', 'system_prompt', 'handoff_keywords',
+        'google_sheet_id', 'staff_passcode', 'ai_model',
+        'plan', 'model_option', 'additional_token_plan',
+        'contract_start_date', 'next_billing_date'
+    ];
+
+    stringFields.forEach(field => {
+        if (formData.has(field)) {
+            const value = formData.get(field);
+            // Input type="date" returns empty string if not set, which we might want to treat as null for DB date fields
+            if ((field === 'contract_start_date' || field === 'next_billing_date') && value === '') {
+                updates[field] = null;
+            } else {
+                updates[field] = value as string;
+            }
+        }
+    });
+
+    if (formData.has('monthly_token_limit')) {
+        updates['monthly_token_limit'] = parseInt(formData.get('monthly_token_limit') as string) || 0;
+    }
+
+    // Handle checkboxes safely using context
+    if (context === 'basic') {
+        updates['is_active'] = formData.get('is_active') === 'on';
+    }
+
+    console.log('[Admin Update] Tenant:', tenant_id, 'Context:', context, 'Updates:', updates);
 
     const { error } = await supabase
         .from('tenants')
-        .update({
-            display_name,
-            system_prompt,
-            is_active,
-            monthly_token_limit,
-            handoff_keywords,
-            google_sheet_id,
-            staff_passcode,
-            ai_model,
-            // 契約情報
-            plan,
-            model_option,
-            additional_token_plan,
-            contract_start_date,
-            next_billing_date,
-            updated_at: new Date().toISOString()
-        })
+        .update(updates)
         .eq('tenant_id', tenant_id);
 
     if (error) {
-        console.error('[Admin Update] DB Error:', error); // ★DBエラー詳細ログ
+        console.error('[Admin Update] DB Error:', error);
         throw new Error('更新に失敗しました: ' + error.message);
     }
 
-    console.log('[Admin Update] Success');
     revalidatePath('/admin');
 }
 

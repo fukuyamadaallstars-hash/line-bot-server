@@ -54,6 +54,10 @@ async function getTenantsFullData() {
     }));
 }
 
+import TenantList from './TenantList';
+
+// ... (existing imports)
+
 export default async function AdminPage() {
     const tenants = await getTenantsFullData();
 
@@ -69,11 +73,7 @@ export default async function AdminPage() {
                 </div>
             </header>
 
-            <div className="bot-grid">
-                {tenants.map((tenant) => (
-                    <TenantCard key={tenant.tenant_id} tenant={tenant} />
-                ))}
-            </div>
+            <TenantList tenants={tenants} />
         </div>
     );
 }

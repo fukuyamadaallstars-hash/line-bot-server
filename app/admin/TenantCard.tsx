@@ -13,7 +13,18 @@ export default function TenantCard({ tenant }: { tenant: any }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                 <div>
                     <h3 style={{ margin: '0 0 4px 0', fontSize: '1.1rem' }}>{tenant.display_name || 'No Name'}</h3>
-                    <div style={{ fontSize: '0.8rem', color: '#64748b', fontFamily: 'monospace' }}>{tenant.tenant_id.substring(0, 8)}...</div>
+                    <div style={{ fontSize: '0.8rem', color: '#64748b', fontFamily: 'monospace', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        {tenant.tenant_id.substring(0, 8)}...
+                        <button
+                            onClick={() => navigator.clipboard.writeText(tenant.tenant_id)}
+                            style={{ border: 'none', background: 'none', cursor: 'pointer', padding: '2px', fontSize: '0.8rem', filter: 'grayscale(100%)', transition: 'filter 0.2s' }}
+                            title="Copy UUID"
+                            onMouseOver={(e) => e.currentTarget.style.filter = 'none'}
+                            onMouseOut={(e) => e.currentTarget.style.filter = 'grayscale(100%)'}
+                        >
+                            📋
+                        </button>
+                    </div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: '0.9rem', fontWeight: 'bold', color: tenant.is_active ? '#22c55e' : '#94a3b8' }}>
@@ -51,7 +62,10 @@ export default function TenantCard({ tenant }: { tenant: any }) {
                     <div className="handoff-list">
                         {tenant.handoffUsers.map((u: any) => (
                             <div key={u.user_id} className="handoff-user-item">
-                                <span className="user-id-brief">{u.user_id.substring(0, 8)}...</span>
+                                <span className="user-id-brief" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    {u.user_id.substring(0, 8)}...
+                                    <button onClick={() => navigator.clipboard.writeText(u.user_id)} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '0.7rem' }} title="Copy ID">📋</button>
+                                </span>
                                 <form action={resumeAi}><input type="hidden" name="tenant_id" value={tenant.tenant_id} /><input type="hidden" name="user_id" value={u.user_id} /><button type="submit" className="resume-btn">再開</button></form>
                             </div>
                         ))}
@@ -84,6 +98,7 @@ export default function TenantCard({ tenant }: { tenant: any }) {
                     {activeTab === 'basic' && (
                         <form action={updateTenant}>
                             <input type="hidden" name="tenant_id" value={tenant.tenant_id} />
+                            <input type="hidden" name="__context" value="basic" />
 
                             <div className="form-group" style={{ marginBottom: '12px' }}>
                                 <label className="input-label">Display Name</label>
@@ -123,18 +138,7 @@ export default function TenantCard({ tenant }: { tenant: any }) {
                         <div>
                             <form action={updateTenant}>
                                 <input type="hidden" name="tenant_id" value={tenant.tenant_id} />
-                                {/* Hidden fields for required updates to prevent overwriting with null if only partial update supported - but updateTenant updates all. 
-                                    Better strategy: updateTenant currently updates ALL fields. We should ideally separate actions or include hidden fields for existing values.
-                                    For now, we must include ALL fields in every form or update the action to support partial updates.
-                                    To be safe with current action: we need to render hidden inputs for Basic fields here too, OR update action to be smarter.
-                                    Assuming 'updateTenant' overwrites everything, using separate forms is dangerous without hidden fields.
-                                    
-                                    **Correction**: Let's put everything in ONE form in the DOM but hide sections with CSS? 
-                                    No, 'activeTab' unmounts. 
-                                    
-                                    **Workaround**: updateTenant receives undefined for missing fields. 
-                                    We should modify 'updateTenant' to ONLY update fields that are present in formData.
-                                */}
+                                <input type="hidden" name="__context" value="billing" />
                                 <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
                                         <div><label className="input-label">Plan</label><select name="plan" defaultValue={tenant.plan || 'Lite'} className="kb-input" style={{ width: '100%' }}><option value="Lite">Lite</option><option value="Standard">Standard</option></select></div>
@@ -148,10 +152,7 @@ export default function TenantCard({ tenant }: { tenant: any }) {
                                         <div><label className="input-label">Next Billing</label><input type="date" name="next_billing_date" defaultValue={tenant.next_billing_date} className="kb-input" style={{ width: '100%' }} /></div>
                                     </div>
 
-                                    {/* 安全のためHiddenで他情報も送る (updateTenantが全更新仕様の場合の保険) */}
-                                    <input type="hidden" name="display_name" value={tenant.display_name} />
-                                    <input type="hidden" name="system_prompt" value={tenant.system_prompt} />
-                                    <input type="hidden" name="ai_model" value={tenant.ai_model || 'gpt-4o-mini'} />
+                                    {/* 安全のためHiddenで他情報も送る必要はなくなりました (部分更新対応済み) */}
 
                                     <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>Save Billing Info</button>
                                 </div>
