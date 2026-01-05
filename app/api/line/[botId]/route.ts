@@ -257,8 +257,22 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
 
         // messages配列を any[] として定義
         const now = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
+
+        // ★履歴取得 (直近6件 = 3ターン分)
+        const { data: historyData } = await supabase
+            .from('chat_history')
+            .select('role, content')
+            .eq('tenant_id', tenantId)
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+            .limit(6);
+
+        // 履歴は新しい順に来るので、古い順に戻す
+        const historyMessages = (historyData || []).reverse().map((h: any) => ({ role: h.role, content: h.content }));
+
         const completionMessages: any[] = [
             { role: "system", content: `現在の日時は ${now} です。\n` + tenant.system_prompt + contextText + (rawKeywords ? `\n\n【重要】現在有効な「担当者呼び出しパスワード」は『${rawKeywords}』です。ユーザーが担当者との会話を希望した場合のみ、「担当者にお繋ぎしますので『${rawKeywords}』と入力してください」と案内してください。` : "") },
+            ...historyMessages,
             { role: "user", content: userMessage }
         ];
 
@@ -361,7 +375,18 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
         }
 
         console.log(`[DEBUG] Final Reply: ${aiResponse ? 'Content exists' : 'EMPTY'}`);
-        await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: aiResponse || 'エラーが発生しました' }] });
+        const finalContent = aiResponse || 'システムエラーが発生しました。時間をおいてお試しください。';
+
+        await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: finalContent }] });
+
+        // 成功時のみ履歴保存
+        if (aiResponse) {
+            await supabase.from('chat_history').insert([
+                { tenant_id: tenantId, user_id: userId, role: 'user', content: userMessage },
+                { tenant_id: tenantId, user_id: userId, role: 'assistant', content: aiResponse }
+            ]);
+        }
+
         await supabase.from('usage_logs').insert({
             tenant_id: tenantId, user_id: userId, event_id: eventId,
             message_type: 'text', token_usage: completion.usage?.total_tokens || 0, status: 'success'
