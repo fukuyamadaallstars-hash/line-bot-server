@@ -199,6 +199,65 @@ export async function createInvoiceStub(formData: FormData) {
         details: []
     });
 
+    // ...existing code...
     if (error) throw new Error('請求書作成エラー: ' + error.message);
+    revalidatePath('/admin');
+}
+
+export async function importKnowledgeFromText(formData: FormData) {
+    await verifyAdmin();
+    const tenant_id = formData.get('tenant_id') as string;
+    const category = formData.get('category') as string || 'FAQ';
+    const text = formData.get('text') as string;
+
+    if (!text || !text.trim()) return;
+
+    // Simple chunking strategy: Split by double newlines or max 500 chars
+    // For better results, we could use AI to semantically split, but cost/latency is higher.
+    // Here we use a hybrid approach: Split by paragraphs, then combine/split to fit ~400-800 chars.
+
+    const rawChunks = text.split(/\n\s*\n/); // Split by paragraphs first
+    const chunks: string[] = [];
+    let currentChunk = '';
+
+    for (const raw of rawChunks) {
+        const clean = raw.trim();
+        if (!clean) continue;
+
+        if ((currentChunk.length + clean.length) > 500) {
+            if (currentChunk) chunks.push(currentChunk);
+            currentChunk = clean;
+        } else {
+            currentChunk = currentChunk ? currentChunk + '\n\n' + clean : clean;
+        }
+    }
+    if (currentChunk) chunks.push(currentChunk);
+
+    // Process in batches to avoid rate limits
+    // Generate embeddings for valid chunks and insert
+    const validChunks = chunks.filter(c => c.length > 10);
+
+    // Batch process: 5 items at a time
+    for (let i = 0; i < validChunks.length; i += 5) {
+        const batch = validChunks.slice(i, i + 5);
+
+        // Generate embeddings in parallel
+        const inputs = batch.map(c => c.replace(/\n/g, ' '));
+        const embeddingResponse = await openai.embeddings.create({
+            model: "text-embedding-3-small",
+            input: inputs,
+        });
+
+        const records = batch.map((content, idx) => ({
+            tenant_id,
+            category,
+            content,
+            embedding: embeddingResponse.data[idx].embedding
+        }));
+
+        const { error } = await supabase.from('knowledge_base').insert(records);
+        if (error) console.error('Batch insert error', error);
+    }
+
     revalidatePath('/admin');
 }

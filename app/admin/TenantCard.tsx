@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { updateTenant, addKnowledge, deleteKnowledge, resumeAi, quickAddToken, addTokenPurchase, createInvoiceStub } from './actions';
+import { updateTenant, addKnowledge, deleteKnowledge, resumeAi, quickAddToken, addTokenPurchase, createInvoiceStub, importKnowledgeFromText } from './actions';
 
 export default function TenantCard({ tenant }: { tenant: any }) {
     const [isOpen, setIsOpen] = useState(false);
@@ -357,6 +357,30 @@ export default function TenantCard({ tenant }: { tenant: any }) {
                                 </div>
                                 <button type="submit" className="btn btn-outline" style={{ height: 'auto' }}>＋</button>
                             </form>
+
+                            <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '2px dashed #e2e8f0' }}>
+                                <h5 style={{ margin: '0 0 8px 0', fontSize: '0.9rem', color: '#64748b' }}>🗑️ ナレッジ一括取り込み (長文対応)</h5>
+                                <form action={importKnowledgeFromText} style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px' }}>
+                                    <input type="hidden" name="tenant_id" value={tenant.tenant_id} />
+                                    <div style={{ marginBottom: '8px' }}>
+                                        <select name="category" className="kb-input" style={{ width: '100%', marginBottom: '8px' }} defaultValue="FAQ">
+                                            <option value="FAQ">FAQ (よくある質問)</option>
+                                            <option value="OFFER">OFFER (キャンペーン)</option>
+                                            <option value="PRICE">PRICE (料金・コース)</option>
+                                            <option value="PROCESS">PROCESS (予約・流れ)</option>
+                                            <option value="POLICY">POLICY (キャンセル規定)</option>
+                                            <option value="CONTEXT">CONTEXT (店舗特徴・こだわり)</option>
+                                        </select>
+                                        <textarea
+                                            name="text"
+                                            className="prompt-textarea"
+                                            placeholder="ここにマニュアルやQ&Aの長文をそのまま貼り付けてください。&#13;&#10;AIに適したサイズ（約500文字程度）のチャンクに自動分割して一括登録されます。"
+                                            style={{ height: '120px', width: '100%', fontSize: '0.8rem' }}
+                                        />
+                                    </div>
+                                    <button type="submit" className="btn btn-primary" style={{ width: '100%', fontSize: '0.85rem' }}>🚀 AI自動分割して一括登録</button>
+                                </form>
+                            </div>
                         </div>
                     )}
                 </div>
