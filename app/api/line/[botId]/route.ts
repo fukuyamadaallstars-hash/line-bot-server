@@ -299,8 +299,16 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
         // 履歴は新しい順に来るので、古い順に戻す
         const historyMessages = (historyData || []).reverse().map((h: any) => ({ role: h.role, content: h.content }));
 
+        // プランごとの追加指示
+        let planInstructions = "";
+        if (tenant.plan === 'Standard' || tenant.plan === 'Enterprise') {
+            planInstructions = `\n\n【Standardプラン動作規定】\n・予約キャンセルの依頼があった場合は、いきなりキャンセルを実行せず、必ず『check_my_reservation』ツールを呼び出してユーザーの現在の予約状況を提示し、「こちらの予約をキャンセルしてよろしいですか？」と確認をとってください。\n・ユーザーから明確な同意（「はい」「お願いします」等）が得られた場合のみ、『cancel_reservation』を実行してください。`;
+        } else {
+            planInstructions = `\n\n【Liteプラン動作規定】\n・予約のキャンセルや変更の依頼があった場合、あなたにはそれを実行する機能がありません。\n・その代わり、「かしこまりました。担当者に申し伝えますので、店舗からの連絡をお待ちください。」と丁寧に案内してください。\n・決して「電話してください」や「自分でやってください」と突き放すような言い方はしないでください。`;
+        }
+
         const completionMessages: any[] = [
-            { role: "system", content: `現在の日時は ${now} です。\n` + tenant.system_prompt + contextText + (rawKeywords ? `\n\n【重要】現在有効な「担当者呼び出しパスワード」は『${rawKeywords}』です。ユーザーが担当者との会話を希望した場合のみ、「担当者にお繋ぎしますので『${rawKeywords}』と入力してください」と案内してください。` : "") },
+            { role: "system", content: `現在の日時は ${now} です。\n` + tenant.system_prompt + contextText + (rawKeywords ? `\n\n【重要】現在有効な「担当者呼び出しパスワード」は『${rawKeywords}』です。ユーザーが担当者との会話を希望した場合のみ、「担当者にお繋ぎしますので『${rawKeywords}』と入力してください」と案内してください。` : "") + planInstructions },
             ...historyMessages,
             { role: "user", content: userMessage }
         ];
