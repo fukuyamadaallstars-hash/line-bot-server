@@ -223,55 +223,67 @@ export async function importKnowledgeFromText(formData: FormData) {
 
     if (!text || !text.trim()) return;
 
-    // Split by double newlines (paragraphs)
-    const rawChunks = text.split(/\n\s*\n/);
-    const validCategories = ['FAQ', 'OFFER', 'PRICE', 'PROCESS', 'POLICY', 'CONTEXT'];
+    // Split line by line to support strict separation based on headers
+    const lines = text.split('\n');
 
     const finalChunks: { content: string, category: string }[] = [];
 
     let currentBuffer = '';
     let currentCategory = defaultCategory;
+    const validCategories = ['FAQ', 'OFFER', 'PRICE', 'PROCESS', 'POLICY', 'CONTEXT'];
 
-    // Helper to detect category in a string
-    function detectCategory(str: string): string | null {
-        // Look for category keywords at the very start (e.g., "[FAQ]", "FAQ:", "【FAQ】", or just "FAQ ...")
-        const match = str.slice(0, 50).toUpperCase().match(/(FAQ|OFFER|PRICE|PROCESS|POLICY|CONTEXT)/);
-        return match ? match[0] : null;
-    }
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
 
-    for (const raw of rawChunks) {
-        const clean = raw.trim();
-        if (!clean) continue;
+        // Detect if this line looks like a start of a new item
+        // e.g. "FAQ", "[FAQ]", "[FAQ-01]", "FAQ:", "【FAQ】"
+        let detectedCat = null;
 
-        const detected = detectCategory(clean);
+        for (const cat of validCategories) {
+            // Check if line STARTS with category (ignoring brackets, case insensitive)
+            // ^\[?CAT matches "CAT", "[CAT", "[CAT-01]"
+            const regex = new RegExp(`^(\\[?${cat})`, 'i');
+            if (regex.test(trimmed)) {
+                detectedCat = cat;
+                break;
+            }
+        }
 
-        // If a new specific category is detected, flush the buffer and start new
-        if (detected) {
+        if (detectedCat) {
+            // Found a start of a new block -> Flush previous buffer
             if (currentBuffer) {
                 finalChunks.push({ content: currentBuffer, category: currentCategory });
             }
-            currentBuffer = clean;
-            currentCategory = detected; // Update current category context
+            // Start new buffer
+            currentBuffer = trimmed;
+            currentCategory = detectedCat;
         } else {
-            // No category detected in this paragraph.
-            // If adding this paragraph keeps us under limit, append. Otherwise flush.
-            if ((currentBuffer.length + clean.length) > 800) {
-                finalChunks.push({ content: currentBuffer, category: currentCategory });
-                currentBuffer = clean;
+            // Continuation of previous block
+            if (currentBuffer) {
+                // Append with newline
+                currentBuffer += '\n' + trimmed;
             } else {
-                if (currentBuffer) currentBuffer += '\n\n' + clean;
-                else currentBuffer = clean;
+                // No header yet (start of file?), just start buffering
+                currentBuffer = trimmed;
             }
         }
     }
-    // Flush remaining
+
+    // Flush remaining buffer
     if (currentBuffer) {
         finalChunks.push({ content: currentBuffer, category: currentCategory });
     }
 
+    // Filter out very short chunks (likely just headers like "FAQ" or "PROCESS")
+    // Use 15 chars to be safe (e.g. "[FAQ-01] Title" is usually longer than 10-15)
+    // "[PROCESS]" is 9 chars. "[FAQ-01]" is 8 chars.
+    // User content "[FAQ-01] 1分デモ" is > 10 chars.
+    const validChunks = finalChunks.filter(c => c.content.length > 10);
+
     // Process in batches
-    for (let i = 0; i < finalChunks.length; i += 5) {
-        const batch = finalChunks.slice(i, i + 5);
+    for (let i = 0; i < validChunks.length; i += 5) {
+        const batch = validChunks.slice(i, i + 5);
 
         const inputs = batch.map(c => c.content.replace(/\n/g, ' '));
         const embeddingResponse = await openai.embeddings.create({
@@ -281,7 +293,7 @@ export async function importKnowledgeFromText(formData: FormData) {
 
         const records = batch.map((item, idx) => ({
             tenant_id,
-            category: item.category, // Use the detected or inherited category
+            category: item.category,
             content: item.content,
             embedding: embeddingResponse.data[idx].embedding
         }));
