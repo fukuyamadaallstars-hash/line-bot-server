@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { updateTenant, addKnowledge, deleteKnowledge, resumeAi, quickAddToken, addTokenPurchase, createInvoiceStub, importKnowledgeFromText } from './actions';
+import { updateTenant, addKnowledge, deleteKnowledge, deleteAllKnowledge, resumeAi, quickAddToken, addTokenPurchase, createInvoiceStub, importKnowledgeFromText } from './actions';
 
 export default function TenantCard({ tenant }: { tenant: any }) {
     const [isOpen, setIsOpen] = useState(false);
@@ -359,7 +359,22 @@ export default function TenantCard({ tenant }: { tenant: any }) {
                             </form>
 
                             <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '2px dashed #e2e8f0' }}>
-                                <h5 style={{ margin: '0 0 8px 0', fontSize: '0.9rem', color: '#64748b' }}>🗑️ ナレッジ一括取り込み (長文対応)</h5>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                                    <h5 style={{ margin: 0, fontSize: '0.9rem', color: '#64748b' }}>🗑️ ナレッジ一括取り込み (長文対応)</h5>
+                                    <form
+                                        action={deleteAllKnowledge}
+                                        onSubmit={(e) => {
+                                            if (!confirm('本当にすべてのナレッジを削除しますか？\nこの操作は取り消せません。')) {
+                                                e.preventDefault();
+                                            }
+                                        }}
+                                    >
+                                        <input type="hidden" name="tenant_id" value={tenant.tenant_id} />
+                                        <button type="submit" style={{ background: '#fee2e2', color: '#dc2626', border: '1px solid #fca5a5', borderRadius: '4px', padding: '4px 8px', fontSize: '0.75rem', cursor: 'pointer' }}>
+                                            ⚠️ すべて削除
+                                        </button>
+                                    </form>
+                                </div>
                                 <form action={importKnowledgeFromText} style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px' }}>
                                     <input type="hidden" name="tenant_id" value={tenant.tenant_id} />
                                     <div style={{ marginBottom: '8px' }}>

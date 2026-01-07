@@ -153,6 +153,17 @@ export async function deleteKnowledge(formData: FormData) {
     revalidatePath('/admin');
 }
 
+export async function deleteAllKnowledge(formData: FormData) {
+    await verifyAdmin();
+    const tenant_id = formData.get('tenant_id') as string;
+    // Safety check: ensure tenant_id is provided
+    if (!tenant_id) return;
+
+    const { error } = await supabase.from('knowledge_base').delete().eq('tenant_id', tenant_id);
+    if (error) throw new Error('一括削除エラー: ' + error.message);
+    revalidatePath('/admin');
+}
+
 export async function resumeAi(formData: FormData) {
     await verifyAdmin();
     const tenant_id = formData.get('tenant_id') as string;
