@@ -207,51 +207,71 @@ export async function createInvoiceStub(formData: FormData) {
 export async function importKnowledgeFromText(formData: FormData) {
     await verifyAdmin();
     const tenant_id = formData.get('tenant_id') as string;
-    const category = formData.get('category') as string || 'FAQ';
+    const defaultCategory = formData.get('category') as string || 'FAQ';
     const text = formData.get('text') as string;
 
     if (!text || !text.trim()) return;
 
-    // Simple chunking strategy: Split by double newlines or max 500 chars
-    // For better results, we could use AI to semantically split, but cost/latency is higher.
-    // Here we use a hybrid approach: Split by paragraphs, then combine/split to fit ~400-800 chars.
+    // Split by double newlines (paragraphs)
+    const rawChunks = text.split(/\n\s*\n/);
+    const validCategories = ['FAQ', 'OFFER', 'PRICE', 'PROCESS', 'POLICY', 'CONTEXT'];
 
-    const rawChunks = text.split(/\n\s*\n/); // Split by paragraphs first
-    const chunks: string[] = [];
-    let currentChunk = '';
+    const finalChunks: { content: string, category: string }[] = [];
+
+    let currentBuffer = '';
+    let currentCategory = defaultCategory;
+
+    // Helper to detect category in a string
+    function detectCategory(str: string): string | null {
+        // Look for category keywords at the very start (e.g., "[FAQ]", "FAQ:", "【FAQ】", or just "FAQ ...")
+        const match = str.slice(0, 50).toUpperCase().match(/(FAQ|OFFER|PRICE|PROCESS|POLICY|CONTEXT)/);
+        return match ? match[0] : null;
+    }
 
     for (const raw of rawChunks) {
         const clean = raw.trim();
         if (!clean) continue;
 
-        if ((currentChunk.length + clean.length) > 500) {
-            if (currentChunk) chunks.push(currentChunk);
-            currentChunk = clean;
+        const detected = detectCategory(clean);
+
+        // If a new specific category is detected, flush the buffer and start new
+        if (detected) {
+            if (currentBuffer) {
+                finalChunks.push({ content: currentBuffer, category: currentCategory });
+            }
+            currentBuffer = clean;
+            currentCategory = detected; // Update current category context
         } else {
-            currentChunk = currentChunk ? currentChunk + '\n\n' + clean : clean;
+            // No category detected in this paragraph.
+            // If adding this paragraph keeps us under limit, append. Otherwise flush.
+            if ((currentBuffer.length + clean.length) > 800) {
+                finalChunks.push({ content: currentBuffer, category: currentCategory });
+                currentBuffer = clean;
+            } else {
+                if (currentBuffer) currentBuffer += '\n\n' + clean;
+                else currentBuffer = clean;
+            }
         }
     }
-    if (currentChunk) chunks.push(currentChunk);
+    // Flush remaining
+    if (currentBuffer) {
+        finalChunks.push({ content: currentBuffer, category: currentCategory });
+    }
 
-    // Process in batches to avoid rate limits
-    // Generate embeddings for valid chunks and insert
-    const validChunks = chunks.filter(c => c.length > 10);
+    // Process in batches
+    for (let i = 0; i < finalChunks.length; i += 5) {
+        const batch = finalChunks.slice(i, i + 5);
 
-    // Batch process: 5 items at a time
-    for (let i = 0; i < validChunks.length; i += 5) {
-        const batch = validChunks.slice(i, i + 5);
-
-        // Generate embeddings in parallel
-        const inputs = batch.map(c => c.replace(/\n/g, ' '));
+        const inputs = batch.map(c => c.content.replace(/\n/g, ' '));
         const embeddingResponse = await openai.embeddings.create({
             model: "text-embedding-3-small",
             input: inputs,
         });
 
-        const records = batch.map((content, idx) => ({
+        const records = batch.map((item, idx) => ({
             tenant_id,
-            category,
-            content,
+            category: item.category, // Use the detected or inherited category
+            content: item.content,
             embedding: embeddingResponse.data[idx].embedding
         }));
 

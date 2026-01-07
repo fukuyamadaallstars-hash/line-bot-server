@@ -374,7 +374,7 @@ export default function TenantCard({ tenant }: { tenant: any }) {
                                         <textarea
                                             name="text"
                                             className="prompt-textarea"
-                                            placeholder="ここにマニュアルやQ&Aの長文をそのまま貼り付けてください。&#13;&#10;AIに適したサイズ（約500文字程度）のチャンクに自動分割して一括登録されます。"
+                                            placeholder="ここに長文を貼り付けてください。&#13;&#10;・段落ごとに自動分割されます。&#13;&#10;・文頭に [FAQ] や [PRICE] などのカテゴリ名を書くと、自動でそのカテゴリに振り分けられます。&#13;&#10;・カテゴリ指定がない場合は、上のプルダウンで選択したカテゴリが適用されます。"
                                             style={{ height: '120px', width: '100%', fontSize: '0.8rem' }}
                                         />
                                     </div>
