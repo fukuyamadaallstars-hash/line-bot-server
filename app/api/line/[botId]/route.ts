@@ -63,8 +63,8 @@ async function sendNotification(webhookUrl: string | null, tenantId: string, mes
     } catch (e) { console.error(e); }
 }
 
-const tools = [
-    {
+const availableTools: Record<string, any> = {
+    check_schedule: {
         type: "function" as const,
         function: {
             name: "check_schedule",
@@ -78,7 +78,7 @@ const tools = [
             },
         },
     },
-    {
+    add_reservation: {
         type: "function" as const,
         function: {
             name: "add_reservation",
@@ -95,7 +95,36 @@ const tools = [
             },
         },
     },
-];
+    cancel_reservation: {
+        type: "function" as const,
+        function: {
+            name: "cancel_reservation",
+            description: "ユーザー自身の予約をキャンセルする",
+            parameters: {
+                type: "object",
+                properties: {
+                    date: { type: "string", description: "対象の日付 (YYYY/MM/DD) - 省略可だが推奨" },
+                },
+            },
+        },
+    },
+    check_my_reservation: {
+        type: "function" as const,
+        function: {
+            name: "check_my_reservation",
+            description: "自分の現在の予約状況を確認する",
+            parameters: { type: "object", properties: {} },
+        },
+    },
+};
+
+function getTools(plan: string = 'Lite') {
+    const base = [availableTools.check_schedule, availableTools.add_reservation];
+    if (plan === 'Standard' || plan === 'Enterprise') {
+        return [...base, availableTools.cancel_reservation, availableTools.check_my_reservation];
+    }
+    return base;
+}
 
 async function handleEvent(event: any, lineClient: any, openaiApiKey: string, tenant: any, supabase: any) {
     if (event.type !== 'message' || event.message.type !== 'text') return;
@@ -285,7 +314,7 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
         };
 
         if (tenant.google_sheet_id) {
-            completionParams.tools = tools;
+            completionParams.tools = getTools(tenant.plan || 'Lite');
         }
 
         const completion = await openai.chat.completions.create(completionParams);
@@ -311,8 +340,6 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
                     const tc = toolCall as any;
                     const args = JSON.parse(tc.function.arguments);
                     console.log(`[DEBUG] Tool Call: ${tc.function.name}, Args=${JSON.stringify(args)}, SheetID=${sheetId}`);
-
-                    // ... (中略) ...
 
                     if (tc.function.name === 'check_schedule') {
                         const resp = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: 'Sheet1!A:D' });
@@ -346,6 +373,57 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
                             }
                         }
                     }
+                    else if (tc.function.name === 'cancel_reservation') {
+                        // ユーザーID一致かつ未来の予約を探す
+                        const resp = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: 'Sheet1!A:H' });
+                        const rows = resp.data.values || [];
+                        // 予約行を探す (H列=User ID, B列=Status, C列=Date)
+                        let targetRowIndex = -1;
+                        let foundRes: any = null;
+
+                        // 日付指定があればそれで、なければ直近のPENDING/CONFIRMEDを探す
+                        for (let i = 0; i < rows.length; i++) {
+                            const row = rows[i];
+                            const rUserId = row[7];
+                            const rStatus = row[1];
+                            const rDate = row[2];
+
+                            if (rUserId === userId && (rStatus === 'PENDING' || rStatus === 'CONFIRMED')) {
+                                if (args.date) {
+                                    if (rDate === args.date) { targetRowIndex = i; foundRes = row; break; }
+                                } else {
+                                    // 指定なしなら最初に見つかったもの（あるいは本来は未来で一番近いもの）
+                                    targetRowIndex = i; foundRes = row; break;
+                                }
+                            }
+                        }
+
+                        if (targetRowIndex !== -1 && foundRes) {
+                            const updateRange = `Sheet1!B${targetRowIndex + 1}`;
+                            await sheets.spreadsheets.values.update({
+                                spreadsheetId: sheetId, range: updateRange, valueInputOption: 'USER_ENTERED',
+                                requestBody: { values: [['CANCELLED']] }
+                            });
+                            toolResult = `予約(ID: ${foundRes[0]}, 日時: ${foundRes[2]} ${foundRes[3]}) をキャンセルしました。またのご利用をお待ちしております。`;
+
+                            // 通知
+                            const staffNotifyMsg = `【自己キャンセル】\n以前の予約(ID: ${foundRes[0]})がユーザー自身によりキャンセルされました。`;
+                            await sendNotification(tenant.notification_webhook_url, tenantId, staffNotifyMsg);
+                        } else {
+                            toolResult = "キャンセル可能な予約が見つかりませんでした。";
+                        }
+                    }
+                    else if (tc.function.name === 'check_my_reservation') {
+                        const resp = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: 'Sheet1!A:H' });
+                        const rows = resp.data.values || [];
+                        const myRes = rows.filter(r => r[7] === userId && (r[1] === 'PENDING' || r[1] === 'CONFIRMED'));
+
+                        if (myRes.length > 0) {
+                            toolResult = "【あなたの現在の予約】\n" + myRes.map(r => `・${r[2]} ${r[3]} (${r[1]})`).join("\n");
+                        } else {
+                            toolResult = "現在、有効な予約はありません。";
+                        }
+                    }
 
                     // Toolの実行結果メッセージを追加
                     completionMessages.push({ role: "tool", content: toolResult, tool_call_id: toolCall.id });
@@ -358,7 +436,7 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
                     messages: completionMessages,
                 };
                 if (tenant.google_sheet_id) {
-                    secondParams.tools = tools;
+                    secondParams.tools = getTools(tenant.plan || 'Lite');
                 }
                 console.log(`[DEBUG] Calling OpenAI Second Pass...`);
                 const secondResponse = await openai.chat.completions.create(secondParams);
