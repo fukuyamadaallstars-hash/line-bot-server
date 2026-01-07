@@ -146,7 +146,11 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
 
         // ★Staff Command Handler (#CONFIRM, #CANCEL, #STAFF)
         if (userMessage.startsWith('#')) {
-            const [command, arg] = userMessage.split(' ');
+            // 引数をパース: #CMD <ID> <REASON...>
+            const args = userMessage.split(/\s+/);
+            const command = args[0];
+            const arg1 = args[1];
+            const reasonArgs = args.slice(2).join(' '); // 3つ目以降を結合
 
             // スタッフ登録解除
             if (command === '#UNSTAFF') {
@@ -157,6 +161,7 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
 
             // ★デバッグコマンド (スタッフ専用)
             if (command === '#DEBUG_INFO') {
+                // ... (Debug Info logic unchanged, but need to re-fetch logs as valid TS scope) ...
                 // ★仕様4: トークン上限・通知 (80% / 95% / 100%) のロジックを再利用
                 const { data: usageData } = await supabase.from('usage_logs').select('token_usage').eq('tenant_id', tenantId);
                 const currentTotal = usageData?.reduce((s: number, l: any) => s + (l.token_usage || 0), 0) || 0;
@@ -177,7 +182,7 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
 
             // 1. スタッフ登録 (#STAFF <code)
             if (command === '#STAFF') {
-                if (arg === tenant.staff_passcode) {
+                if (arg1 === tenant.staff_passcode) {
                     await supabase.from('users').update({ is_staff: true }).eq('tenant_id', tenantId).eq('user_id', userId);
                     await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '✅ スタッフ登録が完了しました。\n管理コマンドが利用可能です。' }] });
                     return;
@@ -194,7 +199,7 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
                     return;
                 }
 
-                const resId = arg;
+                const resId = arg1;
                 const sheets = await getGoogleSheetsClient();
                 const sheetId = tenant.google_sheet_id;
                 if (sheets && sheetId && resId) {
@@ -216,9 +221,17 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
 
                         // 一般ユーザーへ通知
                         if (customerUserId) {
-                            const notifyText = command === '#CONFIRM'
-                                ? `【予約確定】\n予約ID: ${resId} の予約が確定しました。\nご来店をお待ちしております。`
-                                : `【予約キャンセル】\n申し訳ございません。予約ID: ${resId} の予約はキャンセルされました。`;
+                            let notifyText = "";
+                            if (command === '#CONFIRM') {
+                                notifyText = `【予約確定】\n予約ID: ${resId} の予約が確定しました。\nご来店をお待ちしております。`;
+                            } else {
+                                // キャンセル理由がある場合
+                                if (reasonArgs) {
+                                    notifyText = `【予約キャンセル】\n申し訳ございません。予約ID: ${resId} の予約は以下の理由によりキャンセルされました。\n\n『${reasonArgs}』\n\n恐れ入りますが、別の日時で再度ご検討いただけますと幸いです。`;
+                                } else {
+                                    notifyText = `【予約キャンセル】\n申し訳ございません。予約ID: ${resId} の予約は店舗の都合またはその他の理由によりキャンセルされました。\n詳細は店舗までお問い合わせいただくか、別の日時でご検討ください。`;
+                                }
+                            }
 
                             try {
                                 await lineClient.pushMessage({
