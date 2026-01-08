@@ -117,7 +117,7 @@ export default function TenantCard({ tenant }: { tenant: any }) {
                                 <label className="input-label" htmlFor={`model-${tenant.tenant_id}`}>AI Model</label>
                                 <select name="ai_model" id={`model-${tenant.tenant_id}`} key={tenant.ai_model} defaultValue={tenant.ai_model || 'gpt-4o-mini'} className="kb-input" style={{ width: '100%' }}>
                                     <option value="gpt-4o-mini">Standard (GPT-4o mini)</option>
-                                    <option value="gpt-4.1-mini">Pro (GPT-4.1 mini)</option>
+                                    <option value="gpt-4.1">Pro (GPT-4.1)</option>
                                     <option value="gpt-5-mini">Enterprise (GPT-5 mini)</option>
                                 </select>
                             </div>
