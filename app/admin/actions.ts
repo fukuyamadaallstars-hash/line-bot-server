@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 import OpenAI from 'openai';
 import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
-const pdf = require('pdf-parse-new');
+const pdf = require('pdf-parse');
 import mammoth from 'mammoth';
 import Papa from 'papaparse';
 
