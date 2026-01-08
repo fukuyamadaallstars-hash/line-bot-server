@@ -115,10 +115,11 @@ export default function TenantCard({ tenant }: { tenant: any }) {
 
                             <div className="form-group" style={{ marginBottom: '12px' }}>
                                 <label className="input-label" htmlFor={`model-${tenant.tenant_id}`}>AI Model</label>
-                                <select name="ai_model" id={`model-${tenant.tenant_id}`} key={tenant.ai_model} defaultValue={tenant.ai_model || 'gpt-4o-mini'} className="kb-input" style={{ width: '100%' }}>
-                                    <option value="gpt-4o-mini">Standard (GPT-4o mini)</option>
-                                    <option value="gpt-4.1">Pro (GPT-4.1)</option>
-                                    <option value="gpt-5-mini">Enterprise (GPT-5 mini)</option>
+                                <select name="ai_model" id={`model-${tenant.tenant_id}`} key={tenant.ai_model} defaultValue={tenant.ai_model || 'gpt-5-mini'} className="kb-input" style={{ width: '100%' }}>
+                                    <option value="gpt-5-mini">Lite (GPT-5 mini)</option>
+                                    <option value="gpt-5">Standard (GPT-5)</option>
+                                    <option value="gpt-5.1">Pro (GPT-5.1)</option>
+                                    <option value="gpt-5.2">Consultant (GPT-5.2)</option>
                                 </select>
                             </div>
 
