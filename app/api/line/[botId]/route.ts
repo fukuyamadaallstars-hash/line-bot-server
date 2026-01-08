@@ -380,7 +380,7 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
                         });
                         toolResult = `仮予約を受付けました。\n予約ID: ${reservationId}\nお店からの確定連絡をお待ちください。`;
 
-                        const staffNotifyMsg = `【新規予約依頼】\n予約ID: ${reservationId}\n日時: ${args.date} ${args.time}\nお名前: ${args.name}\n内容: ${args.details || '-'}\n\n確定する場合:\n#CONFIRM ${reservationId}\n\nキャンセルする場合:\n#CANCEL ${reservationId}`;
+                        const staffNotifyMsg = `【新規予約依頼】\n予約ID: ${reservationId}\n日時: ${args.date} ${args.time}\nお名前: ${args.name}\n内容: ${args.details || '-'}\n\n確定する場合:\n#CONFIRM ${reservationId}\n\nキャンセルする場合 (理由なし):\n#CANCEL ${reservationId}\n\nキャンセルする場合 (理由あり):\n#CANCEL ${reservationId} 満席のため`;
                         await sendNotification(tenant.notification_webhook_url, tenantId, staffNotifyMsg);
 
                         const { data: staffMembers } = await supabase.from('users').select('user_id').eq('tenant_id', tenantId).eq('is_staff', true);
