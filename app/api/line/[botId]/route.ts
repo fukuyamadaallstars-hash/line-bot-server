@@ -396,6 +396,91 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
                     await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `✅ メモを保存しました。\n対象: ${targetUser.display_name}\n内容: ${memoContent}` }] });
                     return;
                 }
+
+                // 7. 明日の予約一覧 (#TOMORROW)
+                if (command === '#TOMORROW') {
+                    if (!user.is_staff) return;
+
+                    const sheets = await getGoogleSheetsClient();
+                    const sheetId = tenant.google_sheet_id;
+                    if (!sheets || !sheetId) {
+                        await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: 'Error: Google Sheets not connected' }] });
+                        return;
+                    }
+
+                    const d = new Date();
+                    d.setDate(d.getDate() + 1); // Add 1 day
+                    const yyyy = d.getFullYear();
+                    const mm = String(d.getMonth() + 1).padStart(2, '0');
+                    const dd = String(d.getDate()).padStart(2, '0');
+                    const targetDate = `${yyyy}/${mm}/${dd}`;
+
+                    const resp = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: 'Sheet1!A:D' });
+                    const rows = resp.data.values || [];
+                    const tomorrowReservations = rows.filter(row => row[2] === targetDate && row[1] !== 'CANCELLED');
+
+                    if (tomorrowReservations.length === 0) {
+                        await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `📅 明日 (${targetDate}) の予約はありません。` }] });
+                        return;
+                    }
+
+                    const msgLines = tomorrowReservations.map(row => `・${row[3]}~ (ID:${row[0]})`);
+                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `📅 明日 (${targetDate}) の予約:\n\n${msgLines.join('\n')}` }] });
+                    return;
+                }
+
+                // 8. 明日までの空き確認 (#VACANCY)
+                if (command === '#VACANCY') {
+                    if (!user.is_staff) return;
+
+                    const sheets = await getGoogleSheetsClient();
+                    const sheetId = tenant.google_sheet_id;
+                    if (!sheets || !sheetId) {
+                        await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: 'Error: Google Sheets not connected' }] });
+                        return;
+                    }
+
+                    const resp = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: 'Sheet1!A:D' });
+                    const rows = resp.data.values || [];
+
+                    // Config: 11:00 - 20:00 (Simple assumption)
+                    const openHours = [11, 12, 13, 14, 15, 16, 17, 18, 19];
+
+                    const checkDays = [0, 1]; // Today, Tomorrow
+                    let resultMsg = "🈳 明日までの空き状況:\n(目安: 11:00-20:00)\n";
+
+                    const todayBase = new Date();
+
+                    for (const offset of checkDays) {
+                        const d = new Date(todayBase);
+                        d.setDate(d.getDate() + offset);
+                        const yyyy = d.getFullYear();
+                        const mm = String(d.getMonth() + 1).padStart(2, '0');
+                        const dd = String(d.getDate()).padStart(2, '0');
+                        const dateStr = `${yyyy}/${mm}/${dd}`;
+                        const label = offset === 0 ? "今日" : "明日";
+
+                        const dayRows = rows.filter(row => row[2] === dateStr && row[1] !== 'CANCELLED');
+                        const bookedTimes = dayRows.map(row => row[3]); // "14:00"
+
+                        const freeSlots = [];
+                        for (const h of openHours) {
+                            const timeStr = `${h}:00`;
+                            // Simple match: Starts with "14:"
+                            const isBooked = bookedTimes.some(t => t.startsWith(`${h}:`));
+                            if (!isBooked) freeSlots.push(timeStr);
+                        }
+
+                        if (freeSlots.length > 0) {
+                            resultMsg += `\n▼${label} (${dateStr})\n` + freeSlots.join(', ');
+                        } else {
+                            resultMsg += `\n▼${label} (${dateStr})\n🈵 満席`;
+                        }
+                    }
+
+                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: resultMsg }] });
+                    return;
+                }
             } // End of Staff Command Handler
 
             const check = checkSensitivy(userMessage, customKeywords);
