@@ -861,7 +861,6 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
         }
     }
 }
-
 export async function POST(request: Request, { params }: { params: Promise<{ botId: string }> }) {
     const bodyText = await request.text();
     const signature = request.headers.get('x-line-signature') || '';
