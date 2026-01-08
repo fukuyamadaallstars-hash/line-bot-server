@@ -860,32 +860,31 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
             }
         }
     }
-}
 export async function POST(request: Request, { params }: { params: Promise<{ botId: string }> }) {
-    const bodyText = await request.text();
-    const signature = request.headers.get('x-line-signature') || '';
-    try {
-        const supabase = getSupabaseAdmin();
-        const { botId } = await params;
-        const { data: tenant, error } = await supabase.from('tenants').select('*').eq('tenant_id', botId).single();
-        if (error || !tenant || !tenant.is_active) return NextResponse.json({ error: "Unauthorized" }, { status: 404 });
+        const bodyText = await request.text();
+        const signature = request.headers.get('x-line-signature') || '';
+        try {
+            const supabase = getSupabaseAdmin();
+            const { botId } = await params;
+            const { data: tenant, error } = await supabase.from('tenants').select('*').eq('tenant_id', botId).single();
+            if (error || !tenant || !tenant.is_active) return NextResponse.json({ error: "Unauthorized" }, { status: 404 });
 
-        // Decrypt sensitive info
-        tenant.line_channel_access_token = decrypt(tenant.line_channel_access_token);
-        if (tenant.openai_api_key) tenant.openai_api_key = decrypt(tenant.openai_api_key);
-        if (tenant.google_sheet_id) tenant.google_sheet_id = decrypt(tenant.google_sheet_id);
+            // Decrypt sensitive info
+            tenant.line_channel_access_token = decrypt(tenant.line_channel_access_token);
+            if (tenant.openai_api_key) tenant.openai_api_key = decrypt(tenant.openai_api_key);
+            if (tenant.google_sheet_id) tenant.google_sheet_id = decrypt(tenant.google_sheet_id);
 
-        const openaiApiKey = tenant.openai_api_key || process.env.OPENAI_API_KEY || '';
-        const lineClient = new line.messagingApi.MessagingApiClient({ channelAccessToken: tenant.line_channel_access_token });
-        const json = JSON.parse(bodyText);
-        if (json.events) await Promise.all(json.events.map((e: any) => handleEvent(e, lineClient, openaiApiKey, tenant, supabase)));
-        return NextResponse.json({ message: "OK" });
-    } catch (error: any) {
-        console.error(error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+            const openaiApiKey = tenant.openai_api_key || process.env.OPENAI_API_KEY || '';
+            const lineClient = new line.messagingApi.MessagingApiClient({ channelAccessToken: tenant.line_channel_access_token });
+            const json = JSON.parse(bodyText);
+            if (json.events) await Promise.all(json.events.map((e: any) => handleEvent(e, lineClient, openaiApiKey, tenant, supabase)));
+            return NextResponse.json({ message: "OK" });
+        } catch (error: any) {
+            console.error(error);
+            return NextResponse.json({ error: error.message }, { status: 500 });
+        }
     }
-}
 
-export async function GET() {
-    return NextResponse.json({ status: "OK", message: "Bot Router Active" });
-}
+    export async function GET() {
+        return NextResponse.json({ status: "OK", message: "Bot Router Active" });
+    }
