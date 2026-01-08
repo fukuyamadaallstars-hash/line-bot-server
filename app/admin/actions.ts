@@ -47,8 +47,10 @@ export async function updateTenant(formData: FormData) {
         'contract_start_date', 'next_billing_date',
         // Finance & Contact Info
         'company_name', 'billing_contact_name', 'billing_email',
+        'company_name', 'billing_contact_name', 'billing_email',
         'billing_phone', 'billing_address', 'billing_department', 'billing_subject',
-        'billing_status', 'bank_transfer_name'
+        'billing_status', 'bank_transfer_name',
+        'web_access_password'
     ];
 
     const numberFields = [
@@ -58,56 +60,63 @@ export async function updateTenant(formData: FormData) {
 
     stringFields.forEach(field => {
         if (formData.has(field)) {
-            const value = formData.get(field);
-            if ((field.includes('date')) && value === '') {
-                updates[field] = null;
-            } else {
-                updates[field] = value as string;
-            }
+            updates[field] = formData.get(field) as string;
         }
     });
 
-    numberFields.forEach(field => {
-        if (formData.has(field)) {
-            updates[field] = parseInt(formData.get(field) as string) || 0;
-        }
+    if (formData.has('web_access_enabled_check')) {
+        updates['web_access_enabled'] = formData.get('web_access_enabled') === 'on';
+    }
+    const value = formData.get(field);
+    if ((field.includes('date')) && value === '') {
+        updates[field] = null;
+    } else {
+        updates[field] = value as string;
+    }
+}
     });
 
-    // Handle checkboxes safely using context
-    if (context === 'basic') {
-        updates['is_active'] = formData.get('is_active') === 'on';
+numberFields.forEach(field => {
+    if (formData.has(field)) {
+        updates[field] = parseInt(formData.get(field) as string) || 0;
     }
+});
 
-    // Handle booleans (reservation_enabled)
-    if (formData.has('reservation_enabled_present')) { // Check helper field to know if checkbox was visible
-        updates['reservation_enabled'] = formData.get('reservation_enabled') === 'on';
-    }
+// Handle checkboxes safely using context
+if (context === 'basic') {
+    updates['is_active'] = formData.get('is_active') === 'on';
+}
 
-    // Handle JSON fields (if sent as JSON strings)
-    if (formData.has('next_contract_changes')) {
-        try {
-            updates['next_contract_changes'] = JSON.parse(formData.get('next_contract_changes') as string);
-        } catch (e) { console.error('JSON parse error', e); }
-    }
-    if (formData.has('beta_perks')) {
-        try {
-            updates['beta_perks'] = JSON.parse(formData.get('beta_perks') as string);
-        } catch (e) { console.error('JSON parse error', e); }
-    }
+// Handle booleans (reservation_enabled)
+if (formData.has('reservation_enabled_present')) { // Check helper field to know if checkbox was visible
+    updates['reservation_enabled'] = formData.get('reservation_enabled') === 'on';
+}
 
-    console.log('[Admin Update] Tenant:', tenant_id, 'Context:', context, 'Updates:', updates);
+// Handle JSON fields (if sent as JSON strings)
+if (formData.has('next_contract_changes')) {
+    try {
+        updates['next_contract_changes'] = JSON.parse(formData.get('next_contract_changes') as string);
+    } catch (e) { console.error('JSON parse error', e); }
+}
+if (formData.has('beta_perks')) {
+    try {
+        updates['beta_perks'] = JSON.parse(formData.get('beta_perks') as string);
+    } catch (e) { console.error('JSON parse error', e); }
+}
 
-    const { error } = await supabase
-        .from('tenants')
-        .update(updates)
-        .eq('tenant_id', tenant_id);
+console.log('[Admin Update] Tenant:', tenant_id, 'Context:', context, 'Updates:', updates);
 
-    if (error) {
-        console.error('[Admin Update] DB Error:', error);
-        throw new Error('更新に失敗しました: ' + error.message);
-    }
+const { error } = await supabase
+    .from('tenants')
+    .update(updates)
+    .eq('tenant_id', tenant_id);
 
-    revalidatePath('/admin');
+if (error) {
+    console.error('[Admin Update] DB Error:', error);
+    throw new Error('更新に失敗しました: ' + error.message);
+}
+
+revalidatePath('/admin');
 }
 
 // ★緊急用: トークン単発追加 (+1M)

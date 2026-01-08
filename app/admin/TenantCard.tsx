@@ -137,6 +137,21 @@ export default function TenantCard({ tenant }: { tenant: any }) {
                                 <label htmlFor={`active-${tenant.tenant_id}`}>Bot Active</label>
                             </div>
 
+                            <div style={{ borderTop: '1px solid #eee', paddingTop: '12px', marginTop: '12px', marginBottom: '12px' }}>
+                                <h4 style={{ margin: '0 0 10px 0', fontSize: '0.9rem', color: '#64748b' }}>Web Portal Access (テナント管理画面)</h4>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', alignItems: 'center' }}>
+                                    <div>
+                                        <label className="input-label">Access Password</label>
+                                        <input name="web_access_password" defaultValue={tenant.web_access_password} className="kb-input" style={{ width: '100%' }} placeholder="パスワードを設定" />
+                                    </div>
+                                    <div className="toggle-switch" style={{ marginTop: '18px' }}>
+                                        <input type="checkbox" name="web_access_enabled" defaultChecked={tenant.web_access_enabled} id={`web-portal-${tenant.tenant_id}`} />
+                                        <input type="hidden" name="web_access_enabled_check" value="true" />
+                                        <label htmlFor={`web-portal-${tenant.tenant_id}`}>Enable Portal Access</label>
+                                    </div>
+                                </div>
+                            </div>
+
                             <div style={{ borderTop: '1px solid #eee', paddingTop: '12px', marginTop: '12px' }}>
                                 <h4 style={{ margin: '0 0 10px 0', fontSize: '0.9rem', color: '#64748b' }}>Billing Contact (宛名)</h4>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
