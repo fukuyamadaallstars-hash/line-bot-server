@@ -318,6 +318,46 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
                     await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `📣 ${userIds.length}人にメッセージを配信しました。` }] });
                     return;
                 }
+
+                // 5. 予約枠ブロック・代理登録 (#BLOCK <YYYY/MM/DD> <HH:MM> <MEMO>)
+                if (command === '#BLOCK') {
+                    if (!user.is_staff) return;
+                    const bDate = args[1]; // YYYY/MM/DD
+                    const bTime = args[2]; // HH:MM
+                    const bMemo = args.slice(3).join(' ') || '店舗都合';
+
+                    if (!bDate || !bTime) {
+                        await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '使い方: #BLOCK <日付> <時間> <メモ>\n例: #BLOCK 2026/01/20 14:00 電話予約' }] });
+                        return;
+                    }
+
+                    const sheets = await getGoogleSheetsClient();
+                    const sheetId = tenant.google_sheet_id;
+                    if (!sheets || !sheetId) {
+                        await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: 'Error: Google Sheets not connected' }] });
+                        return;
+                    }
+
+                    const resId = Math.random().toString(36).substring(2, 8).toUpperCase();
+                    const newRow = [
+                        resId,             // A: ID
+                        'CONFIRMED',       // B: Status (最初から確定)
+                        bDate,             // C: Date
+                        bTime,             // D: Time
+                        '(店舗ブロック)',   // E: Name
+                        bMemo,             // F: Details
+                        new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }), // G: CreatedAt
+                        ''                 // H: LINE User ID (空)
+                    ];
+
+                    await sheets.spreadsheets.values.append({
+                        spreadsheetId: sheetId, range: 'Sheet1!A:H', valueInputOption: 'USER_ENTERED',
+                        requestBody: { values: [newRow] }
+                    });
+
+                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `✅ 予約枠をブロックしました。\n\nID: ${resId}\n日時: ${bDate} ${bTime}\nメモ: ${bMemo}` }] });
+                    return;
+                }
             } // End of Staff Command Handler
 
             const check = checkSensitivy(userMessage, customKeywords);
