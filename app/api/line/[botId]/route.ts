@@ -3,6 +3,7 @@ import * as line from '@line/bot-sdk';
 import OpenAI from 'openai';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
+import { decrypt } from '@/lib/crypto';
 import { google } from 'googleapis';
 
 // Supabase初期化
@@ -869,6 +870,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ bot
         const { botId } = await params;
         const { data: tenant, error } = await supabase.from('tenants').select('*').eq('tenant_id', botId).single();
         if (error || !tenant || !tenant.is_active) return NextResponse.json({ error: "Unauthorized" }, { status: 404 });
+
+        // Decrypt sensitive info
+        tenant.line_channel_access_token = decrypt(tenant.line_channel_access_token);
+        if (tenant.openai_api_key) tenant.openai_api_key = decrypt(tenant.openai_api_key);
+        if (tenant.google_sheet_id) tenant.google_sheet_id = decrypt(tenant.google_sheet_id);
+
         const openaiApiKey = tenant.openai_api_key || process.env.OPENAI_API_KEY || '';
         const lineClient = new line.messagingApi.MessagingApiClient({ channelAccessToken: tenant.line_channel_access_token });
         const json = JSON.parse(bodyText);

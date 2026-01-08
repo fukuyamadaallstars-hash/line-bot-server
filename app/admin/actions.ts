@@ -8,6 +8,7 @@ import { jwtVerify } from 'jose';
 // const pdf = require('pdf-parse'); // Disabled due to build issues
 import mammoth from 'mammoth';
 import Papa from 'papaparse';
+import { encrypt, decrypt } from '@/lib/crypto';
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -99,6 +100,12 @@ export async function updateTenant(formData: FormData) {
             updates['beta_perks'] = JSON.parse(formData.get('beta_perks') as string);
         } catch (e) { console.error('JSON parse error', e); }
     }
+
+    // Encrypt sensitive fields
+    if (updates['line_channel_access_token']) updates['line_channel_access_token'] = encrypt(updates['line_channel_access_token']);
+    if (updates['openai_api_key']) updates['openai_api_key'] = encrypt(updates['openai_api_key']);
+    if (updates['google_sheet_id']) updates['google_sheet_id'] = encrypt(updates['google_sheet_id']);
+    if (updates['line_channel_secret']) updates['line_channel_secret'] = encrypt(updates['line_channel_secret']);
 
     console.log('[Admin Update] Tenant:', tenant_id, 'Context:', context, 'Updates:', updates);
 
