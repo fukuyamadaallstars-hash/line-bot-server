@@ -356,22 +356,5 @@ export async function importKnowledgeFromFile(formData: FormData) {
     revalidatePath('/portal/dashboard');
 }
 
-const r: any = {
-    tenant_id,
-    category,
-    content
-};
-if (model === 'text-embedding-3-large') {
-    r.embedding_large = embeddingResponse.data[idx].embedding;
-} else {
-    r.embedding = embeddingResponse.data[idx].embedding;
-}
-return r;
-    });
 
-const { error } = await supabase.from('knowledge_base').insert(records);
-if (error) console.error('Batch insert error', error);
-}
-revalidatePath('/portal/dashboard');
-}
 
