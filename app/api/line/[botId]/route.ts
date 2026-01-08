@@ -249,380 +249,449 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
                         return;
                     }
                 }
-            }
-        }
+                // 3. 今日の予約確認 (#TODAY, #SCHEDULE)
+                if (command === '#TODAY' || command === '#SCHEDULE') {
+                    if (!user.is_staff) return;
 
-        const check = checkSensitivy(userMessage, customKeywords);
+                    const sheets = await getGoogleSheetsClient();
+                    const sheetId = tenant.google_sheet_id;
+                    if (!sheets || !sheetId) {
+                        await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: 'Error: Google Sheets not connected' }] });
+                        return;
+                    }
 
-        if (check.found && check.level === 'critical') {
-            await supabase.from('users').update({ is_handoff_active: true, status: 'attention_required' }).eq('tenant_id', tenantId).eq('user_id', userId);
-            await sendNotification(tenant.notification_webhook_url, tenantId, `有人切替: ${userMessage}`);
-            await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '担当者が確認します。AI応答を停止しました。' }] });
-            return;
-        }
+                    const resp = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: 'Sheet1!A:D' });
+                    const rows = resp.data.values || [];
+                    // rows: [ID, Status, Date, Time, ...]
 
-        // ★仕様4: トークン上限・通知 (80% / 95% / 100%)
-        const { data: usageData } = await supabase.from('usage_logs').select('token_usage').eq('tenant_id', tenantId);
-        const currentTotal = usageData?.reduce((s: number, l: any) => s + (l.token_usage || 0), 0) || 0;
-        const limit = tenant.monthly_token_limit;
+                    // Get JST today YYYY/MM/DD
+                    const jaToday = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
+                    const todayStr = jaToday.split(' ')[0]; // "2024/1/9" (format depends on locale string in environment, ensuring consistency)
+                    // Normalize "2024/01/09" vs "2024/1/9" might be needed. 
+                    // Let's rely on simple string includes or standard format YYYY/MM/DD if stored that way.
+                    // Better: Construct YYYY/MM/DD manually
+                    const d = new Date();
+                    const yyyy = d.getFullYear();
+                    const mm = String(d.getMonth() + 1).padStart(2, '0');
+                    const dd = String(d.getDate()).padStart(2, '0');
+                    const todayTarget = `${yyyy}/${mm}/${dd}`;
 
-        if (limit > 0) {
-            const ratio = currentTotal / limit;
+                    const todayReservations = rows.filter(row => row[2] === todayTarget && row[1] !== 'CANCELLED');
 
-            // 停止処理 (100%超)
-            if (ratio >= 1.0) {
-                await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '【システム通知】\n今月のAI利用枠の上限に達したため、応答を一時停止しています。\n再開するには追加枠の購入が必要です。' }] });
-                // 既に通知済みでなければ顧客へ通知するロジックを本来は入れる
+                    if (todayReservations.length === 0) {
+                        await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `📅 ${todayTarget} の予約はありません。` }] });
+                        return;
+                    }
+
+                    const msgLines = todayReservations.map(row => `・${row[3]}~ (ID:${row[0]})`);
+                    const msg = `📅 ${todayTarget} の予約:\n\n${msgLines.join('\n')}`;
+
+                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: msg }] });
+                    return;
+                }
+
+                // 4. 一斉配信 (#BROADCAST <MESSAGE>)
+                if (command === '#BROADCAST') {
+                    if (!user.is_staff) return;
+                    const broadcastMsg = args.slice(1).join(' ');
+                    if (!broadcastMsg) {
+                        await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '使い方: #BROADCAST <メッセージ内容>' }] });
+                        return;
+                    }
+
+                    // DBから該当テナントの友だち全取得 (LINE APIのBroadCastは全体に行く可能性があるため、DBベースでMulticastする)
+                    const { data: allUsers } = await supabase.from('users').select('user_id').eq('tenant_id', tenantId);
+
+                    if (!allUsers || allUsers.length === 0) {
+                        await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '送信対象のユーザーがいません。' }] });
+                        return;
+                    }
+
+                    // LINE Multicast API (Max 500 at a time)
+                    const userIds = allUsers.map((u: any) => u.user_id);
+                    // Chunk by 500
+                    for (let i = 0; i < userIds.length; i += 500) {
+                        const chunk = userIds.slice(i, i + 500);
+                        await lineClient.multicast(chunk, [{ type: 'text', text: broadcastMsg }]);
+                    }
+
+                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `📣 ${userIds.length}人にメッセージを配信しました。` }] });
+                    return;
+                }
+            } // End of Staff Command Handler
+
+            const check = checkSensitivy(userMessage, customKeywords);
+
+            if (check.found && check.level === 'critical') {
+                await supabase.from('users').update({ is_handoff_active: true, status: 'attention_required' }).eq('tenant_id', tenantId).eq('user_id', userId);
+                await sendNotification(tenant.notification_webhook_url, tenantId, `有人切替: ${userMessage}`);
+                await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '担当者が確認します。AI応答を停止しました。' }] });
                 return;
             }
 
-            // 警告通知 (80% または 95% のしきい値を跨いだ時だけ通知すべきだが、簡易的に毎回ログに残すか、別途通知履歴テーブルが必要)
-            // ここでは簡易的に「管理画面Webhook」へ通知を送る (95%以上ならCritical)
-            if (ratio >= 0.95) {
-                await sendNotification(tenant.notification_webhook_url, tenantId, `⚠️ Token Usage Critical: ${(ratio * 100).toFixed(1)}% used.`);
-            } else if (ratio >= 0.80 && ratio < 0.81) { // 80%付近のみ (連投防止のため狭める)
-                await sendNotification(tenant.notification_webhook_url, tenantId, `⚠️ Token Usage Warning: ${(ratio * 100).toFixed(1)}% used.`);
-            }
-        }
+            // ★仕様4: トークン上限・通知 (80% / 95% / 100%)
+            const { data: usageData } = await supabase.from('usage_logs').select('token_usage').eq('tenant_id', tenantId);
+            const currentTotal = usageData?.reduce((s: number, l: any) => s + (l.token_usage || 0), 0) || 0;
+            const limit = tenant.monthly_token_limit;
 
-        const openai = new OpenAI({ apiKey: openaiApiKey });
+            if (limit > 0) {
+                const ratio = currentTotal / limit;
 
-        // Embedding Model Selection based on tenant config
-        const embeddingModel = tenant.embedding_model || "text-embedding-3-small";
-        const isLargeEmbedding = embeddingModel === "text-embedding-3-large";
+                // 停止処理 (100%超)
+                if (ratio >= 1.0) {
+                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '【システム通知】\n今月のAI利用枠の上限に達したため、応答を一時停止しています。\n再開するには追加枠の購入が必要です。' }] });
+                    // 既に通知済みでなければ顧客へ通知するロジックを本来は入れる
+                    return;
+                }
 
-        const embeddingRes = await openai.embeddings.create({ model: embeddingModel, input: userMessage });
-        const queryVector = embeddingRes.data[0].embedding;
-
-        // ★Update: Use Hybrid Search (Vector + Keyword)
-        try {
-            let matchedKnowledge: any[] = [];
-
-            if (isLargeEmbedding) {
-                // Call Large Model RPC (3072 dim)
-                const { data } = await supabase.rpc('match_knowledge_hybrid_large', {
-                    query_text: userMessage,
-                    query_embedding: queryVector,
-                    match_threshold: 0.3,
-                    match_count: 3,
-                    p_tenant_id: tenantId
-                });
-                matchedKnowledge = data;
-            } else {
-                // Call Standard Model RPC (1536 dim)
-                const { data } = await supabase.rpc('match_knowledge_hybrid', {
-                    query_text: userMessage,
-                    query_embedding: queryVector,
-                    match_threshold: 0.3,
-                    match_count: 3,
-                    p_tenant_id: tenantId
-                });
-                matchedKnowledge = data;
+                // 警告通知 (80% または 95% のしきい値を跨いだ時だけ通知すべきだが、簡易的に毎回ログに残すか、別途通知履歴テーブルが必要)
+                // ここでは簡易的に「管理画面Webhook」へ通知を送る (95%以上ならCritical)
+                if (ratio >= 0.95) {
+                    await sendNotification(tenant.notification_webhook_url, tenantId, `⚠️ Token Usage Critical: ${(ratio * 100).toFixed(1)}% used.`);
+                } else if (ratio >= 0.80 && ratio < 0.81) { // 80%付近のみ (連投防止のため狭める)
+                    await sendNotification(tenant.notification_webhook_url, tenantId, `⚠️ Token Usage Warning: ${(ratio * 100).toFixed(1)}% used.`);
+                }
             }
 
-            // カテゴリをバッジとして付与してAIに渡す
-            var contextText = matchedKnowledge?.length > 0 ?
-                "\n\n【参考資料】\n" + matchedKnowledge.map((k: any) => `- [${k.category || 'FAQ'}] ${k.content.substring(0, 800)}`).join("\n")
-                : "";
-        } catch (e) {
-            console.error('Hybrid search failed, falling back to simple vector:', e);
-            // Fallback for Small model only (Legacy RPC match_knowledge takes 1536 dim)
-            if (!isLargeEmbedding) {
-                const { data: matchedKnowledge } = await supabase.rpc('match_knowledge', {
-                    query_embedding: queryVector, match_threshold: 0.3, match_count: 2, p_tenant_id: tenantId
-                });
-                contextText = matchedKnowledge?.length > 0 ?
-                    "\n\n【参考資料】\n" + matchedKnowledge.map((k: any) => `- [${k.category || 'FAQ'}] ${k.content.substring(0, 500)}`).join("\n")
+            const openai = new OpenAI({ apiKey: openaiApiKey });
+
+            // Embedding Model Selection based on tenant config
+            const embeddingModel = tenant.embedding_model || "text-embedding-3-small";
+            const isLargeEmbedding = embeddingModel === "text-embedding-3-large";
+
+            const embeddingRes = await openai.embeddings.create({ model: embeddingModel, input: userMessage });
+            const queryVector = embeddingRes.data[0].embedding;
+
+            // ★Update: Use Hybrid Search (Vector + Keyword)
+            try {
+                let matchedKnowledge: any[] = [];
+
+                if (isLargeEmbedding) {
+                    // Call Large Model RPC (3072 dim)
+                    const { data } = await supabase.rpc('match_knowledge_hybrid_large', {
+                        query_text: userMessage,
+                        query_embedding: queryVector,
+                        match_threshold: 0.3,
+                        match_count: 3,
+                        p_tenant_id: tenantId
+                    });
+                    matchedKnowledge = data;
+                } else {
+                    // Call Standard Model RPC (1536 dim)
+                    const { data } = await supabase.rpc('match_knowledge_hybrid', {
+                        query_text: userMessage,
+                        query_embedding: queryVector,
+                        match_threshold: 0.3,
+                        match_count: 3,
+                        p_tenant_id: tenantId
+                    });
+                    matchedKnowledge = data;
+                }
+
+                // カテゴリをバッジとして付与してAIに渡す
+                var contextText = matchedKnowledge?.length > 0 ?
+                    "\n\n【参考資料】\n" + matchedKnowledge.map((k: any) => `- [${k.category || 'FAQ'}] ${k.content.substring(0, 800)}`).join("\n")
                     : "";
-            } else {
-                contextText = ""; // No fallback for large model (schema mismatch)
+            } catch (e) {
+                console.error('Hybrid search failed, falling back to simple vector:', e);
+                // Fallback for Small model only (Legacy RPC match_knowledge takes 1536 dim)
+                if (!isLargeEmbedding) {
+                    const { data: matchedKnowledge } = await supabase.rpc('match_knowledge', {
+                        query_embedding: queryVector, match_threshold: 0.3, match_count: 2, p_tenant_id: tenantId
+                    });
+                    contextText = matchedKnowledge?.length > 0 ?
+                        "\n\n【参考資料】\n" + matchedKnowledge.map((k: any) => `- [${k.category || 'FAQ'}] ${k.content.substring(0, 500)}`).join("\n")
+                        : "";
+                } else {
+                    contextText = ""; // No fallback for large model (schema mismatch)
+                }
             }
-        }
 
-        // messages配列を any[] として定義
-        const now = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
+            // messages配列を any[] として定義
+            const now = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
 
-        // ★履歴取得 (直近6件 = 3ターン分)
-        const { data: historyData } = await supabase
-            .from('chat_history')
-            .select('role, content')
-            .eq('tenant_id', tenantId)
-            .eq('user_id', userId)
-            .order('created_at', { ascending: false })
-            .limit(20);
+            // ★履歴取得 (直近6件 = 3ターン分)
+            const { data: historyData } = await supabase
+                .from('chat_history')
+                .select('role, content')
+                .eq('tenant_id', tenantId)
+                .eq('user_id', userId)
+                .order('created_at', { ascending: false })
+                .limit(20);
 
-        // 履歴は新しい順に来るので、古い順に戻す
-        const historyMessages = (historyData || []).reverse().map((h: any) => ({ role: h.role, content: h.content }));
+            // 履歴は新しい順に来るので、古い順に戻す
+            const historyMessages = (historyData || []).reverse().map((h: any) => ({ role: h.role, content: h.content }));
 
-        // プランごとの追加指示
-        let planInstructions = "";
-        if (tenant.plan === 'Standard' || tenant.plan === 'Enterprise') {
-            planInstructions = `\n\n【Standardプラン動作規定】\n・予約キャンセルの依頼があった場合は、いきなりキャンセルを実行せず、必ず『check_my_reservation』ツールを呼び出してユーザーの現在の予約状況を提示し、「こちらの予約をキャンセルしてよろしいですか？」と確認をとってください。\n・さらに、「差し支えなければキャンセルの理由をお聞かせください」と丁寧に伺ってください。\n・ユーザーから明確な同意が得られた場合のみ、『cancel_reservation』を実行してください。その際、理由があればreason引数に含めてください。`;
-        } else {
-            planInstructions = `\n\n【Liteプラン動作規定】\n・予約のキャンセルや変更の依頼があった場合、あなたにはそれを実行する機能がありません。\n・その代わり、「かしこまりました。担当者に申し伝えますので、店舗からの連絡をお待ちください。」と丁寧に案内してください。\n・決して「電話してください」や「自分でやってください」と突き放すような言い方はしないでください。`;
-        }
+            // プランごとの追加指示
+            let planInstructions = "";
+            if (tenant.plan === 'Standard' || tenant.plan === 'Enterprise') {
+                planInstructions = `\n\n【Standardプラン動作規定】\n・予約キャンセルの依頼があった場合は、いきなりキャンセルを実行せず、必ず『check_my_reservation』ツールを呼び出してユーザーの現在の予約状況を提示し、「こちらの予約をキャンセルしてよろしいですか？」と確認をとってください。\n・さらに、「差し支えなければキャンセルの理由をお聞かせください」と丁寧に伺ってください。\n・ユーザーから明確な同意が得られた場合のみ、『cancel_reservation』を実行してください。その際、理由があればreason引数に含めてください。`;
+            } else {
+                planInstructions = `\n\n【Liteプラン動作規定】\n・予約のキャンセルや変更の依頼があった場合、あなたにはそれを実行する機能がありません。\n・その代わり、「かしこまりました。担当者に申し伝えますので、店舗からの連絡をお待ちください。」と丁寧に案内してください。\n・決して「電話してください」や「自分でやってください」と突き放すような言い方はしないでください。`;
+            }
 
-        const completionMessages: any[] = [
-            { role: "system", content: `現在の日時は ${now} です。\n` + tenant.system_prompt + contextText + (rawKeywords ? `\n\n【重要】現在有効な「担当者呼び出しパスワード」は『${rawKeywords}』です。ユーザーが担当者との会話を希望した場合のみ、「担当者にお繋ぎしますので『${rawKeywords}』と入力してください」と案内してください。` : "") + planInstructions },
-            ...historyMessages,
-            { role: "user", content: userMessage }
-        ];
+            const completionMessages: any[] = [
+                { role: "system", content: `現在の日時は ${now} です。\n` + tenant.system_prompt + contextText + (rawKeywords ? `\n\n【重要】現在有効な「担当者呼び出しパスワード」は『${rawKeywords}』です。ユーザーが担当者との会話を希望した場合のみ、「担当者にお繋ぎしますので『${rawKeywords}』と入力してください」と案内してください。` : "") + planInstructions },
+                ...historyMessages,
+                { role: "user", content: userMessage }
+            ];
 
-        // モデル選択
-        const selectedModel = tenant.ai_model || "gpt-4o-mini";
-        const isThinkingModel = selectedModel.includes('gpt-5.1') || selectedModel.includes('gpt-5.2');
+            // モデル選択
+            const selectedModel = tenant.ai_model || "gpt-4o-mini";
+            const isThinkingModel = selectedModel.includes('gpt-5.1') || selectedModel.includes('gpt-5.2');
 
-        // ★非同期推論フロー (GPT-5.1/5.2)
-        if (isThinkingModel) {
-            // 1. 即時応答 (Reply API)
-            await lineClient.replyMessage({
-                replyToken: event.replyToken,
-                messages: [{ type: 'text', text: '🧠 専門知識を元に深く考えています... 少々お待ちください。' }]
-            });
+            // ★非同期推論フロー (GPT-5.1/5.2)
+            if (isThinkingModel) {
+                // 1. 即時応答 (Reply API)
+                await lineClient.replyMessage({
+                    replyToken: event.replyToken,
+                    messages: [{ type: 'text', text: '🧠 専門知識を元に深く考えています... 少々お待ちください。' }]
+                });
 
-            // 2. 非同期処理実行 (本来は waitUntil 等を使うが、関数内で Promise を detach する)
-            (async () => {
-                try {
-                    const completionParams: any = {
+                // 2. 非同期処理実行 (本来は waitUntil 等を使うが、関数内で Promise を detach する)
+                (async () => {
+                    try {
+                        const completionParams: any = {
+                            model: selectedModel,
+                            messages: completionMessages,
+                        };
+                        // Thinking models might not support tools well yet, or take too long, but we include if configured
+                        if (tenant.google_sheet_id) {
+                            completionParams.tools = getTools(tenant.plan || 'Lite');
+                        }
+
+                        const completion = await openai.chat.completions.create(completionParams);
+                        const choice = completion.choices[0];
+                        let aiResponse = choice.message.content;
+
+                        // Note: Tool calls handling in async mode is complex. For now, if tool calls exist, we just execute them and push result.
+                        // Ideally recursion is needed like the sync flow.
+                        if (choice.message.tool_calls) {
+                            // ... (Tool handling logic similar to sync flow, but using Push API for output)
+                            // For simplicity in this iteration, we fallback to text if tool is used, or perform 1 hop.
+                            // Here we implement basic tool execution and response.
+                            const sheets = await getGoogleSheetsClient();
+                            const sheetId = tenant.google_sheet_id;
+                            if (sheets && sheetId) {
+                                completionMessages.push(choice.message);
+                                for (const toolCall of choice.message.tool_calls) {
+                                    const tc = toolCall as any;
+                                    const args = JSON.parse(tc.function.arguments);
+                                    let toolResult = "";
+                                    // ... (Tool logic duplicated or refactored) ...
+                                    // For brevity, let's assume simple answer generation after tool use
+                                    // Simplified tool logic for Async flow:
+                                    if (tc.function.name === 'check_schedule') {
+                                        // ... duplicated logic ...
+                                        toolResult = "（スケジュール確認完了）"; // Placeholder
+                                    } else {
+                                        toolResult = "（処理完了）";
+                                    }
+                                    completionMessages.push({ role: "tool", content: toolResult, tool_call_id: toolCall.id });
+                                }
+                                const secondResponse = await openai.chat.completions.create({ model: selectedModel, messages: completionMessages });
+                                aiResponse = secondResponse.choices[0].message.content;
+                            }
+                        }
+
+                        if (aiResponse) {
+                            await lineClient.pushMessage({
+                                to: userId,
+                                messages: [{ type: 'text', text: aiResponse }]
+                            });
+
+                            // Save History
+                            await supabase.from('chat_history').insert([
+                                { tenant_id: tenantId, user_id: userId, role: 'user', content: userMessage },
+                                { tenant_id: tenantId, user_id: userId, role: 'assistant', content: aiResponse }
+                            ]);
+                            await supabase.from('usage_logs').insert({
+                                tenant_id: tenantId, user_id: userId, event_id: eventId,
+                                message_type: 'text', token_usage: completion.usage?.total_tokens || 0, status: 'success_async'
+                            });
+                        }
+                    } catch (e) {
+                        console.error('Async processing failed', e);
+                        await lineClient.pushMessage({ to: userId, messages: [{ type: 'text', text: '申し訳ありません。処理中にエラーが発生しました。' }] });
+                    }
+                })();
+
+                return; // End Sync Flow
+            }
+
+            // --- 以下、通常モデル(Legacy)の同期フロー ---
+
+            const completionParams: any = {
+                model: selectedModel,
+                messages: completionMessages,
+            };
+
+            if (tenant.google_sheet_id) {
+                completionParams.tools = getTools(tenant.plan || 'Lite');
+            }
+
+            const completion = await openai.chat.completions.create(completionParams);
+
+            const choice = completion.choices[0];
+            console.log(`[DEBUG] First AI Response: Content="${choice.message.content?.substring(0, 20)}...", ToolCalls=${choice.message.tool_calls ? choice.message.tool_calls.length : 0}`);
+
+            let aiResponse = choice.message.content;
+
+            if (choice.message.tool_calls) {
+                const sheets = await getGoogleSheetsClient();
+                const sheetId = tenant.google_sheet_id;
+
+                if (sheets && sheetId) {
+                    console.log(`[DEBUG] Tool execution started for ${choice.message.tool_calls.length} calls.`);
+
+                    // Assistantのメッセージ（ToolCall要求）は一度だけ履歴に追加する
+                    completionMessages.push(choice.message);
+
+                    let toolResult = "";
+
+                    for (const toolCall of choice.message.tool_calls) {
+                        const tc = toolCall as any;
+                        const args = JSON.parse(tc.function.arguments);
+                        console.log(`[DEBUG] Tool Call: ${tc.function.name}, Args=${JSON.stringify(args)}, SheetID=${sheetId}`);
+
+                        if (tc.function.name === 'check_schedule') {
+                            const resp = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: 'Sheet1!A:D' });
+                            const rows = resp.data.values || [];
+                            const targeted = rows
+                                .filter(row => row[0] === args.date)
+                                .map(row => `${row[1]} : 予約済`);
+                            toolResult = targeted.length > 0 ? "【現在の予約状況】\n" + targeted.join("\n") : "その日の予約は入っていません。";
+                        }
+                        else if (tc.function.name === 'add_reservation') {
+                            const reservationId = crypto.randomUUID().split('-')[0];
+                            const jstTime = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
+                            await sheets.spreadsheets.values.append({
+                                spreadsheetId: sheetId, range: 'Sheet1', valueInputOption: 'USER_ENTERED',
+                                requestBody: { values: [[reservationId, 'PENDING', args.date, args.time, args.name, args.details || '', jstTime, userId]] }
+                            });
+                            toolResult = `仮予約を受付けました。\n予約ID: ${reservationId}\nお店からの確定連絡をお待ちください。`;
+
+                            const staffNotifyMsg = `【新規予約依頼】\n予約ID: ${reservationId}\n日時: ${args.date} ${args.time}\nお名前: ${args.name}\n内容: ${args.details || '-'}\n\n確定する場合:\n#CONFIRM ${reservationId}\n\nキャンセルする場合 (理由なし):\n#CANCEL ${reservationId}\n\nキャンセルする場合 (理由あり):\n#CANCEL ${reservationId} 満席のため`;
+                            await sendNotification(tenant.notification_webhook_url, tenantId, staffNotifyMsg);
+
+                            const { data: staffMembers } = await supabase.from('users').select('user_id').eq('tenant_id', tenantId).eq('is_staff', true);
+                            if (staffMembers && staffMembers.length > 0) {
+                                for (const sm of staffMembers) {
+                                    try {
+                                        await lineClient.pushMessage({
+                                            to: sm.user_id,
+                                            messages: [{ type: 'text', text: staffNotifyMsg }]
+                                        });
+                                    } catch (e) { console.error('Staff push failed', e); }
+                                }
+                            }
+                        }
+                        else if (tc.function.name === 'cancel_reservation') {
+                            // ユーザーID一致かつ未来の予約を探す
+                            const resp = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: 'Sheet1!A:H' });
+                            const rows = resp.data.values || [];
+                            // 予約行を探す (H列=User ID, B列=Status, C列=Date)
+                            let targetRowIndex = -1;
+                            let foundRes: any = null;
+
+                            // 日付指定があればそれで、なければ直近のPENDING/CONFIRMEDを探す
+                            for (let i = 0; i < rows.length; i++) {
+                                const row = rows[i];
+                                const rUserId = row[7];
+                                const rStatus = row[1];
+                                const rDate = row[2];
+
+                                if (rUserId === userId && (rStatus === 'PENDING' || rStatus === 'CONFIRMED')) {
+                                    if (args.date) {
+                                        if (rDate === args.date) { targetRowIndex = i; foundRes = row; break; }
+                                    } else {
+                                        // 指定なしなら最初に見つかったもの（あるいは本来は未来で一番近いもの）
+                                        targetRowIndex = i; foundRes = row; break;
+                                    }
+                                }
+                            }
+
+                            if (targetRowIndex !== -1 && foundRes) {
+                                const updateRange = `Sheet1!B${targetRowIndex + 1}`;
+                                await sheets.spreadsheets.values.update({
+                                    spreadsheetId: sheetId, range: updateRange, valueInputOption: 'USER_ENTERED',
+                                    requestBody: { values: [['CANCELLED']] }
+                                });
+                                toolResult = `予約(ID: ${foundRes[0]}, 日時: ${foundRes[2]} ${foundRes[3]}) をキャンセルしました。またのご利用をお待ちしております。`;
+
+                                // 通知
+                                // ★理由がある場合は通知に含める
+                                const reasonText = args.reason ? `\n理由: ${args.reason}` : "";
+                                const staffNotifyMsg = `【自己キャンセル】\n以前の予約(ID: ${foundRes[0]})がユーザー自身によりキャンセルされました。${reasonText}`;
+                                await sendNotification(tenant.notification_webhook_url, tenantId, staffNotifyMsg);
+                            } else {
+                                toolResult = "キャンセル可能な予約が見つかりませんでした。";
+                            }
+                        }
+                        else if (tc.function.name === 'check_my_reservation') {
+                            const resp = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: 'Sheet1!A:H' });
+                            const rows = resp.data.values || [];
+                            const myRes = rows.filter(r => r[7] === userId && (r[1] === 'PENDING' || r[1] === 'CONFIRMED'));
+
+                            if (myRes.length > 0) {
+                                toolResult = "【あなたの現在の予約】\n" + myRes.map(r => `・${r[2]} ${r[3]} (${r[1]})`).join("\n");
+                            } else {
+                                toolResult = "現在、有効な予約はありません。";
+                            }
+                        }
+
+                        // Toolの実行結果メッセージを追加
+                        completionMessages.push({ role: "tool", content: toolResult, tool_call_id: toolCall.id });
+                    }
+                    // 2回目の呼び出し時も、同様に条件分岐済みのパラメータを使用する(ただしmessagesは更新後のもの)
+                    // もし2回目以降でToolを使わせたくない場合は tools を外すが、会話の流れ上は一貫性を持たせるため、
+                    // 基本的には同じ設定で良いが、念のため再定義する。
+                    const secondParams: any = {
                         model: selectedModel,
                         messages: completionMessages,
                     };
-                    // Thinking models might not support tools well yet, or take too long, but we include if configured
                     if (tenant.google_sheet_id) {
-                        completionParams.tools = getTools(tenant.plan || 'Lite');
+                        secondParams.tools = getTools(tenant.plan || 'Lite');
+                    }
+                    console.log(`[DEBUG] Calling OpenAI Second Pass...`);
+                    const secondResponse = await openai.chat.completions.create(secondParams);
+                    aiResponse = secondResponse.choices[0].message.content;
+
+                    // ★Fallback: AIが何も喋らなかった場合、Toolの結果をそのまま返す
+                    if (!aiResponse && toolResult) {
+                        console.log(`[DEBUG] AI response empty. Using toolResult as fallback.`);
+                        aiResponse = toolResult;
                     }
 
-                    const completion = await openai.chat.completions.create(completionParams);
-                    const choice = completion.choices[0];
-                    let aiResponse = choice.message.content;
-
-                    // Note: Tool calls handling in async mode is complex. For now, if tool calls exist, we just execute them and push result.
-                    // Ideally recursion is needed like the sync flow.
-                    if (choice.message.tool_calls) {
-                        // ... (Tool handling logic similar to sync flow, but using Push API for output)
-                        // For simplicity in this iteration, we fallback to text if tool is used, or perform 1 hop.
-                        // Here we implement basic tool execution and response.
-                        const sheets = await getGoogleSheetsClient();
-                        const sheetId = tenant.google_sheet_id;
-                        if (sheets && sheetId) {
-                            completionMessages.push(choice.message);
-                            for (const toolCall of choice.message.tool_calls) {
-                                const tc = toolCall as any;
-                                const args = JSON.parse(tc.function.arguments);
-                                let toolResult = "";
-                                // ... (Tool logic duplicated or refactored) ...
-                                // For brevity, let's assume simple answer generation after tool use
-                                // Simplified tool logic for Async flow:
-                                if (tc.function.name === 'check_schedule') {
-                                    // ... duplicated logic ...
-                                    toolResult = "（スケジュール確認完了）"; // Placeholder
-                                } else {
-                                    toolResult = "（処理完了）";
-                                }
-                                completionMessages.push({ role: "tool", content: toolResult, tool_call_id: toolCall.id });
-                            }
-                            const secondResponse = await openai.chat.completions.create({ model: selectedModel, messages: completionMessages });
-                            aiResponse = secondResponse.choices[0].message.content;
-                        }
-                    }
-
-                    if (aiResponse) {
-                        await lineClient.pushMessage({
-                            to: userId,
-                            messages: [{ type: 'text', text: aiResponse }]
-                        });
-
-                        // Save History
-                        await supabase.from('chat_history').insert([
-                            { tenant_id: tenantId, user_id: userId, role: 'user', content: userMessage },
-                            { tenant_id: tenantId, user_id: userId, role: 'assistant', content: aiResponse }
-                        ]);
-                        await supabase.from('usage_logs').insert({
-                            tenant_id: tenantId, user_id: userId, event_id: eventId,
-                            message_type: 'text', token_usage: completion.usage?.total_tokens || 0, status: 'success_async'
-                        });
-                    }
-                } catch (e) {
-                    console.error('Async processing failed', e);
-                    await lineClient.pushMessage({ to: userId, messages: [{ type: 'text', text: '申し訳ありません。処理中にエラーが発生しました。' }] });
+                    console.log(`[DEBUG] Second AI Response: ${aiResponse?.substring(0, 50)}...`);
                 }
-            })();
-
-            return; // End Sync Flow
-        }
-
-        // --- 以下、通常モデル(Legacy)の同期フロー ---
-
-        const completionParams: any = {
-            model: selectedModel,
-            messages: completionMessages,
-        };
-
-        if (tenant.google_sheet_id) {
-            completionParams.tools = getTools(tenant.plan || 'Lite');
-        }
-
-        const completion = await openai.chat.completions.create(completionParams);
-
-        const choice = completion.choices[0];
-        console.log(`[DEBUG] First AI Response: Content="${choice.message.content?.substring(0, 20)}...", ToolCalls=${choice.message.tool_calls ? choice.message.tool_calls.length : 0}`);
-
-        let aiResponse = choice.message.content;
-
-        if (choice.message.tool_calls) {
-            const sheets = await getGoogleSheetsClient();
-            const sheetId = tenant.google_sheet_id;
-
-            if (sheets && sheetId) {
-                console.log(`[DEBUG] Tool execution started for ${choice.message.tool_calls.length} calls.`);
-
-                // Assistantのメッセージ（ToolCall要求）は一度だけ履歴に追加する
-                completionMessages.push(choice.message);
-
-                let toolResult = "";
-
-                for (const toolCall of choice.message.tool_calls) {
-                    const tc = toolCall as any;
-                    const args = JSON.parse(tc.function.arguments);
-                    console.log(`[DEBUG] Tool Call: ${tc.function.name}, Args=${JSON.stringify(args)}, SheetID=${sheetId}`);
-
-                    if (tc.function.name === 'check_schedule') {
-                        const resp = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: 'Sheet1!A:D' });
-                        const rows = resp.data.values || [];
-                        const targeted = rows
-                            .filter(row => row[0] === args.date)
-                            .map(row => `${row[1]} : 予約済`);
-                        toolResult = targeted.length > 0 ? "【現在の予約状況】\n" + targeted.join("\n") : "その日の予約は入っていません。";
-                    }
-                    else if (tc.function.name === 'add_reservation') {
-                        const reservationId = crypto.randomUUID().split('-')[0];
-                        const jstTime = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
-                        await sheets.spreadsheets.values.append({
-                            spreadsheetId: sheetId, range: 'Sheet1', valueInputOption: 'USER_ENTERED',
-                            requestBody: { values: [[reservationId, 'PENDING', args.date, args.time, args.name, args.details || '', jstTime, userId]] }
-                        });
-                        toolResult = `仮予約を受付けました。\n予約ID: ${reservationId}\nお店からの確定連絡をお待ちください。`;
-
-                        const staffNotifyMsg = `【新規予約依頼】\n予約ID: ${reservationId}\n日時: ${args.date} ${args.time}\nお名前: ${args.name}\n内容: ${args.details || '-'}\n\n確定する場合:\n#CONFIRM ${reservationId}\n\nキャンセルする場合 (理由なし):\n#CANCEL ${reservationId}\n\nキャンセルする場合 (理由あり):\n#CANCEL ${reservationId} 満席のため`;
-                        await sendNotification(tenant.notification_webhook_url, tenantId, staffNotifyMsg);
-
-                        const { data: staffMembers } = await supabase.from('users').select('user_id').eq('tenant_id', tenantId).eq('is_staff', true);
-                        if (staffMembers && staffMembers.length > 0) {
-                            for (const sm of staffMembers) {
-                                try {
-                                    await lineClient.pushMessage({
-                                        to: sm.user_id,
-                                        messages: [{ type: 'text', text: staffNotifyMsg }]
-                                    });
-                                } catch (e) { console.error('Staff push failed', e); }
-                            }
-                        }
-                    }
-                    else if (tc.function.name === 'cancel_reservation') {
-                        // ユーザーID一致かつ未来の予約を探す
-                        const resp = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: 'Sheet1!A:H' });
-                        const rows = resp.data.values || [];
-                        // 予約行を探す (H列=User ID, B列=Status, C列=Date)
-                        let targetRowIndex = -1;
-                        let foundRes: any = null;
-
-                        // 日付指定があればそれで、なければ直近のPENDING/CONFIRMEDを探す
-                        for (let i = 0; i < rows.length; i++) {
-                            const row = rows[i];
-                            const rUserId = row[7];
-                            const rStatus = row[1];
-                            const rDate = row[2];
-
-                            if (rUserId === userId && (rStatus === 'PENDING' || rStatus === 'CONFIRMED')) {
-                                if (args.date) {
-                                    if (rDate === args.date) { targetRowIndex = i; foundRes = row; break; }
-                                } else {
-                                    // 指定なしなら最初に見つかったもの（あるいは本来は未来で一番近いもの）
-                                    targetRowIndex = i; foundRes = row; break;
-                                }
-                            }
-                        }
-
-                        if (targetRowIndex !== -1 && foundRes) {
-                            const updateRange = `Sheet1!B${targetRowIndex + 1}`;
-                            await sheets.spreadsheets.values.update({
-                                spreadsheetId: sheetId, range: updateRange, valueInputOption: 'USER_ENTERED',
-                                requestBody: { values: [['CANCELLED']] }
-                            });
-                            toolResult = `予約(ID: ${foundRes[0]}, 日時: ${foundRes[2]} ${foundRes[3]}) をキャンセルしました。またのご利用をお待ちしております。`;
-
-                            // 通知
-                            // ★理由がある場合は通知に含める
-                            const reasonText = args.reason ? `\n理由: ${args.reason}` : "";
-                            const staffNotifyMsg = `【自己キャンセル】\n以前の予約(ID: ${foundRes[0]})がユーザー自身によりキャンセルされました。${reasonText}`;
-                            await sendNotification(tenant.notification_webhook_url, tenantId, staffNotifyMsg);
-                        } else {
-                            toolResult = "キャンセル可能な予約が見つかりませんでした。";
-                        }
-                    }
-                    else if (tc.function.name === 'check_my_reservation') {
-                        const resp = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: 'Sheet1!A:H' });
-                        const rows = resp.data.values || [];
-                        const myRes = rows.filter(r => r[7] === userId && (r[1] === 'PENDING' || r[1] === 'CONFIRMED'));
-
-                        if (myRes.length > 0) {
-                            toolResult = "【あなたの現在の予約】\n" + myRes.map(r => `・${r[2]} ${r[3]} (${r[1]})`).join("\n");
-                        } else {
-                            toolResult = "現在、有効な予約はありません。";
-                        }
-                    }
-
-                    // Toolの実行結果メッセージを追加
-                    completionMessages.push({ role: "tool", content: toolResult, tool_call_id: toolCall.id });
-                }
-                // 2回目の呼び出し時も、同様に条件分岐済みのパラメータを使用する(ただしmessagesは更新後のもの)
-                // もし2回目以降でToolを使わせたくない場合は tools を外すが、会話の流れ上は一貫性を持たせるため、
-                // 基本的には同じ設定で良いが、念のため再定義する。
-                const secondParams: any = {
-                    model: selectedModel,
-                    messages: completionMessages,
-                };
-                if (tenant.google_sheet_id) {
-                    secondParams.tools = getTools(tenant.plan || 'Lite');
-                }
-                console.log(`[DEBUG] Calling OpenAI Second Pass...`);
-                const secondResponse = await openai.chat.completions.create(secondParams);
-                aiResponse = secondResponse.choices[0].message.content;
-
-                // ★Fallback: AIが何も喋らなかった場合、Toolの結果をそのまま返す
-                if (!aiResponse && toolResult) {
-                    console.log(`[DEBUG] AI response empty. Using toolResult as fallback.`);
-                    aiResponse = toolResult;
-                }
-
-                console.log(`[DEBUG] Second AI Response: ${aiResponse?.substring(0, 50)}...`);
             }
-        }
 
-        console.log(`[DEBUG] Final Reply: ${aiResponse ? 'Content exists' : 'EMPTY'}`);
-        const finalContent = aiResponse || 'システムエラーが発生しました。時間をおいてお試しください。';
+            console.log(`[DEBUG] Final Reply: ${aiResponse ? 'Content exists' : 'EMPTY'}`);
+            const finalContent = aiResponse || 'システムエラーが発生しました。時間をおいてお試しください。';
 
-        await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: finalContent }] });
+            await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: finalContent }] });
 
-        // 成功時のみ履歴保存
-        if (aiResponse) {
-            await supabase.from('chat_history').insert([
-                { tenant_id: tenantId, user_id: userId, role: 'user', content: userMessage },
-                { tenant_id: tenantId, user_id: userId, role: 'assistant', content: aiResponse }
-            ]);
-        }
+            // 成功時のみ履歴保存
+            if (aiResponse) {
+                await supabase.from('chat_history').insert([
+                    { tenant_id: tenantId, user_id: userId, role: 'user', content: userMessage },
+                    { tenant_id: tenantId, user_id: userId, role: 'assistant', content: aiResponse }
+                ]);
+            }
 
-        await supabase.from('usage_logs').insert({
-            tenant_id: tenantId, user_id: userId, event_id: eventId,
-            message_type: 'text', token_usage: completion.usage?.total_tokens || 0, status: 'success'
-        });
+            await supabase.from('usage_logs').insert({
+                tenant_id: tenantId, user_id: userId, event_id: eventId,
+                message_type: 'text', token_usage: completion.usage?.total_tokens || 0, status: 'success'
+            });
 
-    } catch (error: any) {
-        console.error(`[${tenantId}] CRITICAL Error:`, error);
-        if (event.replyToken) {
-            try {
-                await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: 'システムエラーが発生しました。時間を置いてお試しください。' }] });
-            } catch (e) { console.error('Error sending fallback message:', e); }
+        } catch (error: any) {
+            console.error(`[${tenantId}] CRITICAL Error:`, error);
+            if (event.replyToken) {
+                try {
+                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: 'システムエラーが発生しました。時間を置いてお試しください。' }] });
+                } catch (e) { console.error('Error sending fallback message:', e); }
+            }
         }
     }
 }
