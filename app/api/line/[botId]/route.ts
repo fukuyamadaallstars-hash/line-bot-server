@@ -307,7 +307,7 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
             .eq('tenant_id', tenantId)
             .eq('user_id', userId)
             .order('created_at', { ascending: false })
-            .limit(6);
+            .limit(20);
 
         // 履歴は新しい順に来るので、古い順に戻す
         const historyMessages = (historyData || []).reverse().map((h: any) => ({ role: h.role, content: h.content }));
