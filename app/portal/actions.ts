@@ -6,7 +6,7 @@ import { redirect } from 'next/navigation';
 import { SignJWT, jwtVerify } from 'jose';
 import OpenAI from 'openai';
 import { revalidatePath } from 'next/cache';
-const pdf = require('pdf-parse');
+const pdf = require('pdf-parse-new');
 import mammoth from 'mammoth';
 import Papa from 'papaparse';
 
