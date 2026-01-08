@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { updateTenant, addKnowledge, deleteKnowledge, deleteAllKnowledge, resumeAi, quickAddToken, addTokenPurchase, createInvoiceStub, importKnowledgeFromText, importKnowledgeFromFile } from './actions';
+import { updateTenant, addKnowledge, deleteKnowledge, deleteAllKnowledge, resumeAi, quickAddToken, addTokenPurchase, createInvoiceStub, importKnowledgeFromText, importKnowledgeFromFile, reEmbedAllKnowledge } from './actions';
 
 export default function TenantCard({ tenant }: { tenant: any }) {
     const [isOpen, setIsOpen] = useState(false);
@@ -125,6 +125,17 @@ export default function TenantCard({ tenant }: { tenant: any }) {
                                         <option value="gpt-5.1">Consultant Pro (GPT-5.1)</option>
                                         <option value="gpt-5.2">Consultant Ultra (GPT-5.2)</option>
                                     </optgroup>
+                                </select>
+                            </div>
+
+                            <div className="form-group" style={{ marginBottom: '12px' }}>
+                                <label className="input-label" htmlFor={`embed-model-${tenant.tenant_id}`}>Embedding Model (Search Accuracy)</label>
+                                <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: '6px', padding: '8px', marginBottom: '8px', fontSize: '0.8rem', color: '#92400e' }}>
+                                    ⚠️ <strong>注意:</strong> モデルを変更した後は、必ず下部の「Knowledge Base」タブにある「全ナレッジ再埋め込み」を実行してください。実行しないと検索が機能しません。
+                                </div>
+                                <select name="embedding_model" id={`embed-model-${tenant.tenant_id}`} key={tenant.embedding_model} defaultValue={tenant.embedding_model || 'text-embedding-3-small'} className="kb-input" style={{ width: '100%' }}>
+                                    <option value="text-embedding-3-small">Standard (Small - 1536 dim)</option>
+                                    <option value="text-embedding-3-large">High Accuracy (Large - 3072 dim)</option>
                                 </select>
                             </div>
 
@@ -380,6 +391,20 @@ export default function TenantCard({ tenant }: { tenant: any }) {
                             </form>
 
                             <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '2px dashed #e2e8f0' }}>
+                                <div style={{ marginBottom: '20px', padding: '12px', background: '#fff7ed', borderRadius: '8px', border: '1px solid #fed7aa' }}>
+                                    <h5 style={{ margin: '0 0 8px 0', fontSize: '0.9rem', color: '#c2410c' }}>🔄 データ整合性ツール (モデル変更時用)</h5>
+                                    <p style={{ margin: '0 0 12px 0', fontSize: '0.75rem', color: '#9a3412' }}>
+                                        Embeddingモデルを変更した場合、既存のナレッジは検索できなくなります。<br />
+                                        モデル切り替え後は必ずここで「再埋め込み」を実行してください。
+                                    </p>
+                                    <form action={reEmbedAllKnowledge}>
+                                        <input type="hidden" name="tenant_id" value={tenant.tenant_id} />
+                                        <button type="submit" className="btn" style={{ width: '100%', fontSize: '0.85rem', background: '#f97316', color: 'white', border: '1px solid #ea580c' }}>
+                                            ⚠️ 現在の設定で全データを再埋め込み (Re-Embed All)
+                                        </button>
+                                    </form>
+                                </div>
+
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                                     <h5 style={{ margin: 0, fontSize: '0.9rem', color: '#64748b' }}>📂 ファイルからインポート (PDF/Word/CSV)</h5>
                                 </div>

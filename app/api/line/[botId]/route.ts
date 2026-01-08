@@ -286,17 +286,39 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
         }
 
         const openai = new OpenAI({ apiKey: openaiApiKey });
-        const embeddingRes = await openai.embeddings.create({ model: "text-embedding-3-small", input: userMessage });
+
+        // Embedding Model Selection based on tenant config
+        const embeddingModel = tenant.embedding_model || "text-embedding-3-small";
+        const isLargeEmbedding = embeddingModel === "text-embedding-3-large";
+
+        const embeddingRes = await openai.embeddings.create({ model: embeddingModel, input: userMessage });
+        const queryVector = embeddingRes.data[0].embedding;
 
         // ★Update: Use Hybrid Search (Vector + Keyword)
         try {
-            const { data: matchedKnowledge } = await supabase.rpc('match_knowledge_hybrid', {
-                query_text: userMessage, // Keyword search requires text
-                query_embedding: embeddingRes.data[0].embedding,
-                match_threshold: 0.3,
-                match_count: 3, // Increased count for better context
-                p_tenant_id: tenantId
-            });
+            let matchedKnowledge: any[] = [];
+
+            if (isLargeEmbedding) {
+                // Call Large Model RPC (3072 dim)
+                const { data } = await supabase.rpc('match_knowledge_hybrid_large', {
+                    query_text: userMessage,
+                    query_embedding: queryVector,
+                    match_threshold: 0.3,
+                    match_count: 3,
+                    p_tenant_id: tenantId
+                });
+                matchedKnowledge = data;
+            } else {
+                // Call Standard Model RPC (1536 dim)
+                const { data } = await supabase.rpc('match_knowledge_hybrid', {
+                    query_text: userMessage,
+                    query_embedding: queryVector,
+                    match_threshold: 0.3,
+                    match_count: 3,
+                    p_tenant_id: tenantId
+                });
+                matchedKnowledge = data;
+            }
 
             // カテゴリをバッジとして付与してAIに渡す
             var contextText = matchedKnowledge?.length > 0 ?
@@ -304,13 +326,17 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
                 : "";
         } catch (e) {
             console.error('Hybrid search failed, falling back to simple vector:', e);
-            // Fallback to old method if RPC fails
-            const { data: matchedKnowledge } = await supabase.rpc('match_knowledge', {
-                query_embedding: embeddingRes.data[0].embedding, match_threshold: 0.3, match_count: 2, p_tenant_id: tenantId
-            });
-            contextText = matchedKnowledge?.length > 0 ?
-                "\n\n【参考資料】\n" + matchedKnowledge.map((k: any) => `- [${k.category || 'FAQ'}] ${k.content.substring(0, 500)}`).join("\n")
-                : "";
+            // Fallback for Small model only (Legacy RPC match_knowledge takes 1536 dim)
+            if (!isLargeEmbedding) {
+                const { data: matchedKnowledge } = await supabase.rpc('match_knowledge', {
+                    query_embedding: queryVector, match_threshold: 0.3, match_count: 2, p_tenant_id: tenantId
+                });
+                contextText = matchedKnowledge?.length > 0 ?
+                    "\n\n【参考資料】\n" + matchedKnowledge.map((k: any) => `- [${k.category || 'FAQ'}] ${k.content.substring(0, 500)}`).join("\n")
+                    : "";
+            } else {
+                contextText = ""; // No fallback for large model (schema mismatch)
+            }
         }
 
         // messages配列を any[] として定義

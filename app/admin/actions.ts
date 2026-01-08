@@ -47,9 +47,9 @@ export async function updateTenant(formData: FormData) {
         'display_name', 'system_prompt', 'handoff_keywords',
         'google_sheet_id', 'staff_passcode', 'ai_model',
         'plan', 'model_option', 'additional_token_plan',
+        'embedding_model',
         'contract_start_date', 'next_billing_date',
         // Finance & Contact Info
-        'company_name', 'billing_contact_name', 'billing_email',
         'company_name', 'billing_contact_name', 'billing_email',
         'billing_phone', 'billing_address', 'billing_department', 'billing_subject',
         'billing_status', 'bank_transfer_name',
