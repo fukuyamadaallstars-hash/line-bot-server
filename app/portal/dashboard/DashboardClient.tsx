@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { updateSystemPrompt, addKnowledge, deleteKnowledge, importKnowledgeFromText, logoutTenant } from '../actions';
+import { updateSystemPrompt, addKnowledge, deleteKnowledge, importKnowledgeFromText, importKnowledgeFromFile, logoutTenant } from '../actions';
 
 export default function DashboardClient({ tenant }: { tenant: any }) {
     const [activeTab, setActiveTab] = useState<'prompt' | 'knowledge'>('prompt');
@@ -165,6 +165,32 @@ export default function DashboardClient({ tenant }: { tenant: any }) {
                                         <textarea name="content" placeholder="内容を入力..." required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', minHeight: '60px' }} />
                                     </div>
                                     <button type="submit" style={{ height: 'fit-content', background: 'white', border: '1px solid #cbd5e1', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer' }}>追加</button>
+                                </form>
+                            </div>
+
+
+                            {/* File Import */}
+                            <div style={{ background: '#f0fdf4', padding: '16px', borderRadius: '8px', border: '1px dashed #bbf7d0', marginBottom: '24px' }}>
+                                <h4 style={{ margin: '0 0 12px 0', fontSize: '0.9rem', color: '#15803d' }}>📂 ファイルからインポート (PDF/Word/CSV)</h4>
+                                <form action={importKnowledgeFromFile}>
+                                    <div style={{ marginBottom: '12px' }}>
+                                        <select name="category" defaultValue="FAQ" style={{ padding: '8px', borderRadius: '6px', border: '1px solid #bbf7d0', width: '100%', marginBottom: '8px' }}>
+                                            <option value="FAQ">FAQ (よくある質問)</option>
+                                            <option value="OFFER">OFFER (キャンペーン)</option>
+                                            <option value="PRICE">PRICE (料金・コース)</option>
+                                            <option value="PROCESS">PROCESS (予約・流れ)</option>
+                                            <option value="POLICY">POLICY (キャンセル規定)</option>
+                                            <option value="CONTEXT">CONTEXT (店舗特徴・こだわり)</option>
+                                        </select>
+                                        <input type="file" name="file" accept=".pdf,.docx,.csv,.txt" style={{ width: '100%', padding: '8px', background: 'white', borderRadius: '6px', border: '1px solid #bbf7d0' }} required />
+                                        <div style={{ fontSize: '0.75rem', color: '#166534', marginTop: '6px' }}>
+                                            ※ PDF, Word(.docx), CSV, Textに対応。<br />
+                                            ※ 自動的に適切なサイズに分割され、現在のAIモデル設定に基づいて登録されます。
+                                        </div>
+                                    </div>
+                                    <button type="submit" style={{ width: '100%', background: '#22c55e', color: 'white', border: 'none', padding: '10px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+                                        ファイルを解析して登録
+                                    </button>
                                 </form>
                             </div>
 
