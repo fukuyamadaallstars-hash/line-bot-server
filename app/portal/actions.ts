@@ -355,95 +355,49 @@ export async function importKnowledgeFromFile(formData: FormData) {
     }
     revalidatePath('/portal/dashboard');
 }
-// ... (existing functions)
 
-export async function importKnowledgeFromFile(formData: FormData) {
-    const tenant_id = await verifyTenant(); // Tenant Auth
-    const category = formData.get('category') as string || 'FAQ';
-    const file = formData.get('file') as File;
+let textData = "";
 
-    if (!file || file.size === 0) throw new Error('File is required');
+if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const data = await pdf(buffer);
+    textData = data.text;
+} else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || file.name.endsWith('.docx')) {
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const result = await mammoth.extractRawText({ buffer });
+    textData = result.value;
+} else if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
+    const text = await file.text();
+    const parsed = Papa.parse(text, { header: true });
+    const rows = parsed.data as any[];
+    const chunks: { content: string, category: string }[] = [];
 
-    // Fetch tenant's model preference (Read-only for tenant)
-    const { data: tenant } = await supabase.from('tenants').select('embedding_model').eq('tenant_id', tenant_id).single();
-    const model = tenant?.embedding_model || 'text-embedding-3-small';
-
-    let textData = "";
-
-    if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
-        const arrayBuffer = await file.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
-        const data = await pdf(buffer);
-        textData = data.text;
-    } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || file.name.endsWith('.docx')) {
-        const arrayBuffer = await file.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
-        const result = await mammoth.extractRawText({ buffer });
-        textData = result.value;
-    } else if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
-        const text = await file.text();
-        const parsed = Papa.parse(text, { header: true });
-        const rows = parsed.data as any[];
-        const chunks: { content: string, category: string }[] = [];
-
-        for (const row of rows) {
-            const q = row['Question'] || row['question'] || row['質問'] || row['Q'];
-            const a = row['Answer'] || row['answer'] || row['回答'] || row['A'];
-            const cat = row['Category'] || row['category'] || row['カテゴリ'] || category;
-            if (q && a) {
-                chunks.push({ content: `Q: ${q}\nA: ${a}`, category: cat });
-            } else {
-                const content = Object.values(row).join('\n');
-                if (content.trim()) chunks.push({ content, category: cat });
-            }
+    for (const row of rows) {
+        const q = row['Question'] || row['question'] || row['質問'] || row['Q'];
+        const a = row['Answer'] || row['answer'] || row['回答'] || row['A'];
+        const cat = row['Category'] || row['category'] || row['カテゴリ'] || category;
+        if (q && a) {
+            chunks.push({ content: `Q: ${q}\nA: ${a}`, category: cat });
+        } else {
+            const content = Object.values(row).join('\n');
+            if (content.trim()) chunks.push({ content, category: cat });
         }
-
-        for (let i = 0; i < chunks.length; i += 5) {
-            const batch = chunks.slice(i, i + 5);
-            const inputs = batch.map(c => c.content.replace(/\n/g, ' '));
-            const embeddingResponse = await openai.embeddings.create({
-                model: model,
-                input: inputs,
-            });
-            const records = batch.map((item, idx) => {
-                const r: any = {
-                    tenant_id,
-                    category: item.category,
-                    content: item.content
-                };
-                if (model === 'text-embedding-3-large') {
-                    r.embedding_large = embeddingResponse.data[idx].embedding;
-                } else {
-                    r.embedding = embeddingResponse.data[idx].embedding;
-                }
-                return r;
-            });
-            const { error } = await supabase.from('knowledge_base').insert(records);
-            if (error) console.error('CSV Batch Error', error);
-        }
-        revalidatePath('/portal/dashboard');
-        return;
-    } else {
-        textData = await file.text();
     }
-
-    if (!textData.trim()) throw new Error('No text extracted from file');
-    const chunks = recursiveSplit(textData);
 
     for (let i = 0; i < chunks.length; i += 5) {
         const batch = chunks.slice(i, i + 5);
-        const inputs = batch.map(c => c.replace(/\n/g, ' '));
-
+        const inputs = batch.map(c => c.content.replace(/\n/g, ' '));
         const embeddingResponse = await openai.embeddings.create({
             model: model,
             input: inputs,
         });
-
-        const records = batch.map((content, idx) => {
+        const records = batch.map((item, idx) => {
             const r: any = {
                 tenant_id,
-                category,
-                content
+                category: item.category,
+                content: item.content
             };
             if (model === 'text-embedding-3-large') {
                 r.embedding_large = embeddingResponse.data[idx].embedding;
@@ -452,10 +406,44 @@ export async function importKnowledgeFromFile(formData: FormData) {
             }
             return r;
         });
-
         const { error } = await supabase.from('knowledge_base').insert(records);
-        if (error) console.error('Batch insert error', error);
+        if (error) console.error('CSV Batch Error', error);
     }
     revalidatePath('/portal/dashboard');
+    return;
+} else {
+    textData = await file.text();
+}
+
+if (!textData.trim()) throw new Error('No text extracted from file');
+const chunks = recursiveSplit(textData);
+
+for (let i = 0; i < chunks.length; i += 5) {
+    const batch = chunks.slice(i, i + 5);
+    const inputs = batch.map(c => c.replace(/\n/g, ' '));
+
+    const embeddingResponse = await openai.embeddings.create({
+        model: model,
+        input: inputs,
+    });
+
+    const records = batch.map((content, idx) => {
+        const r: any = {
+            tenant_id,
+            category,
+            content
+        };
+        if (model === 'text-embedding-3-large') {
+            r.embedding_large = embeddingResponse.data[idx].embedding;
+        } else {
+            r.embedding = embeddingResponse.data[idx].embedding;
+        }
+        return r;
+    });
+
+    const { error } = await supabase.from('knowledge_base').insert(records);
+    if (error) console.error('Batch insert error', error);
+}
+revalidatePath('/portal/dashboard');
 }
 
