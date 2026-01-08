@@ -5,6 +5,9 @@ import { revalidatePath } from 'next/cache';
 import OpenAI from 'openai';
 import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
+const pdf = require('pdf-parse');
+import mammoth from 'mammoth';
+import Papa from 'papaparse';
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -297,6 +300,141 @@ export async function importKnowledgeFromText(formData: FormData) {
             tenant_id,
             category: item.category,
             content: item.content,
+            embedding: embeddingResponse.data[idx].embedding
+        }));
+
+        const { error } = await supabase.from('knowledge_base').insert(records);
+        if (error) console.error('Batch insert error', error);
+    }
+
+    revalidatePath('/admin');
+}
+
+// ★ヘルパー: テキスト分割 (Recursive Character Text Splitter 相当)
+function recursiveSplit(text: string, chunkSize: number = 800, overlap: number = 200): string[] {
+    if (text.length <= chunkSize) return [text];
+
+    const separators = ["\n\n", "\n", "。", "、", " ", ""];
+    let finalValidChunks: string[] = [];
+    let currentChunk = "";
+
+    // Step 1: Split by paragraphs
+    const paragraphs = text.split(/\n\n+/);
+
+    for (const paragraph of paragraphs) {
+        if ((currentChunk.length + paragraph.length) < chunkSize) {
+            currentChunk += (currentChunk ? "\n\n" : "") + paragraph;
+        } else {
+            if (currentChunk) finalValidChunks.push(currentChunk);
+
+            if (paragraph.length > chunkSize) {
+                let tempPara = paragraph;
+                while (tempPara.length > 0) {
+                    if (tempPara.length <= chunkSize) {
+                        currentChunk = tempPara;
+                        tempPara = "";
+                    } else {
+                        let splitIndex = chunkSize;
+                        const puncs = ["。", "！", "？", "．", "\n", "、"];
+                        for (let i = chunkSize; i > chunkSize - 200; i--) {
+                            if (puncs.includes(tempPara[i])) {
+                                splitIndex = i + 1;
+                                break;
+                            }
+                        }
+                        finalValidChunks.push(tempPara.substring(0, splitIndex));
+                        tempPara = tempPara.substring(splitIndex);
+                    }
+                }
+            } else {
+                currentChunk = paragraph;
+            }
+        }
+    }
+    if (currentChunk) finalValidChunks.push(currentChunk);
+
+    return finalValidChunks;
+}
+
+export async function importKnowledgeFromFile(formData: FormData) {
+    await verifyAdmin();
+    const tenant_id = formData.get('tenant_id') as string;
+    const category = formData.get('category') as string || 'FAQ';
+    const file = formData.get('file') as File;
+
+    if (!file || file.size === 0) throw new Error('File is required');
+
+    let textData = "";
+
+    // File type detection
+    if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
+        const arrayBuffer = await file.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        const data = await pdf(buffer);
+        textData = data.text;
+    } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || file.name.endsWith('.docx')) {
+        const arrayBuffer = await file.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        const result = await mammoth.extractRawText({ buffer });
+        textData = result.value;
+    } else if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
+        const text = await file.text();
+        const parsed = Papa.parse(text, { header: true });
+        const rows = parsed.data as any[];
+        const chunks: { content: string, category: string }[] = [];
+
+        for (const row of rows) {
+            const q = row['Question'] || row['question'] || row['質問'] || row['Q'];
+            const a = row['Answer'] || row['answer'] || row['回答'] || row['A'];
+            const cat = row['Category'] || row['category'] || row['カテゴリ'] || category;
+
+            if (q && a) {
+                chunks.push({ content: `Q: ${q}\nA: ${a}`, category: cat });
+            } else {
+                const content = Object.values(row).join('\n');
+                if (content.trim()) chunks.push({ content, category: cat });
+            }
+        }
+
+        for (let i = 0; i < chunks.length; i += 5) {
+            const batch = chunks.slice(i, i + 5);
+            const inputs = batch.map(c => c.content.replace(/\n/g, ' '));
+            const embeddingResponse = await openai.embeddings.create({
+                model: "text-embedding-3-small",
+                input: inputs,
+            });
+            const records = batch.map((item, idx) => ({
+                tenant_id,
+                category: item.category,
+                content: item.content,
+                embedding: embeddingResponse.data[idx].embedding
+            }));
+            const { error } = await supabase.from('knowledge_base').insert(records);
+            if (error) console.error('CSV Batch Error', error);
+        }
+        revalidatePath('/admin');
+        return;
+    } else {
+        textData = await file.text();
+    }
+
+    if (!textData.trim()) throw new Error('No text extracted from file');
+
+    const chunks = recursiveSplit(textData);
+
+    for (let i = 0; i < chunks.length; i += 5) {
+        const batch = chunks.slice(i, i + 5);
+        const inputs = batch.map(c => c.replace(/\n/g, ' '));
+
+        const embeddingResponse = await openai.embeddings.create({
+            model: "text-embedding-3-small",
+            input: inputs,
+        });
+
+        const records = batch.map((content, idx) => ({
+            tenant_id,
+            category,
+            content,
             embedding: embeddingResponse.data[idx].embedding
         }));
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { updateTenant, addKnowledge, deleteKnowledge, deleteAllKnowledge, resumeAi, quickAddToken, addTokenPurchase, createInvoiceStub, importKnowledgeFromText } from './actions';
+import { updateTenant, addKnowledge, deleteKnowledge, deleteAllKnowledge, resumeAi, quickAddToken, addTokenPurchase, createInvoiceStub, importKnowledgeFromText, importKnowledgeFromFile } from './actions';
 
 export default function TenantCard({ tenant }: { tenant: any }) {
     const [isOpen, setIsOpen] = useState(false);
@@ -375,7 +375,30 @@ export default function TenantCard({ tenant }: { tenant: any }) {
 
                             <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '2px dashed #e2e8f0' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                                    <h5 style={{ margin: 0, fontSize: '0.9rem', color: '#64748b' }}>🗑️ ナレッジ一括取り込み (長文対応)</h5>
+                                    <h5 style={{ margin: 0, fontSize: '0.9rem', color: '#64748b' }}>📂 ファイルからインポート (PDF/Word/CSV)</h5>
+                                </div>
+                                <form action={importKnowledgeFromFile} style={{ background: '#f0fdf4', padding: '12px', borderRadius: '8px', border: '1px solid #bbf7d0', marginBottom: '16px' }}>
+                                    <input type="hidden" name="tenant_id" value={tenant.tenant_id} />
+                                    <div style={{ marginBottom: '8px' }}>
+                                        <select name="category" className="kb-input" style={{ width: '100%', marginBottom: '8px' }} defaultValue="FAQ">
+                                            <option value="FAQ">FAQ (よくある質問)</option>
+                                            <option value="OFFER">OFFER (キャンペーン)</option>
+                                            <option value="PRICE">PRICE (料金・コース)</option>
+                                            <option value="PROCESS">PROCESS (予約・流れ)</option>
+                                            <option value="POLICY">POLICY (キャンセル規定)</option>
+                                            <option value="CONTEXT">CONTEXT (店舗特徴・こだわり)</option>
+                                        </select>
+                                        <input type="file" name="file" accept=".pdf,.docx,.csv,.txt" className="kb-input" style={{ width: '100%', background: 'white' }} required />
+                                        <div style={{ fontSize: '0.75rem', color: '#166534', marginTop: '4px' }}>
+                                            ※ PDF, Word, CSV, Textに対応。最大10MB。<br />
+                                            ※ 自動的に適切なサイズに分割(Chunking)されて登録されます。
+                                        </div>
+                                    </div>
+                                    <button type="submit" className="btn btn-primary" style={{ width: '100%', fontSize: '0.85rem', background: '#16a34a', borderColor: '#15803d' }}>📤 ファイルを解析して一括登録</button>
+                                </form>
+
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                                    <h5 style={{ margin: 0, fontSize: '0.9rem', color: '#64748b' }}>📝 テキスト貼り付け・一括削除</h5>
                                     <form
                                         action={deleteAllKnowledge}
                                         onSubmit={(e) => {
