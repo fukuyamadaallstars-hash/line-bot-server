@@ -358,6 +358,44 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
                     await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `✅ 予約枠をブロックしました。\n\nID: ${resId}\n日時: ${bDate} ${bTime}\nメモ: ${bMemo}` }] });
                     return;
                 }
+
+                // 6. 顧客メモ (#MEMO <お名前部分一致> <内容>)
+                if (command === '#MEMO') {
+                    if (!user.is_staff) return;
+                    const targetName = args[1];
+                    const memoContent = args.slice(2).join(' ');
+
+                    if (!targetName || !memoContent) {
+                        await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '使い方: #MEMO <お客様名> <メモ内容>\n例: #MEMO 山田 カラー剤アレルギーあり' }] });
+                        return;
+                    }
+
+                    // 名前で検索
+                    const { data: foundUsers } = await supabase.from('users')
+                        .select('user_id, display_name, internal_memo')
+                        .eq('tenant_id', tenantId)
+                        .ilike('display_name', `%${targetName}%`)
+                        .limit(5);
+
+                    if (!foundUsers || foundUsers.length === 0) {
+                        await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `「${targetName}」に一致するユーザーが見つかりません。` }] });
+                        return;
+                    }
+
+                    if (foundUsers.length > 1) {
+                        const names = foundUsers.map((u: any) => u.display_name).join(', ');
+                        await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `複数がヒットしました: ${names}\nもう少し詳しく指定してください。` }] });
+                        return;
+                    }
+
+                    const targetUser = foundUsers[0];
+                    const newMemo = (targetUser.internal_memo ? targetUser.internal_memo + "\n" : "") + `・${memoContent} (${new Date().toLocaleDateString()})`;
+
+                    await supabase.from('users').update({ internal_memo: newMemo }).eq('tenant_id', tenantId).eq('user_id', targetUser.user_id);
+
+                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `✅ メモを保存しました。\n対象: ${targetUser.display_name}\n内容: ${memoContent}` }] });
+                    return;
+                }
             } // End of Staff Command Handler
 
             const check = checkSensitivy(userMessage, customKeywords);
@@ -470,8 +508,10 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
                 planInstructions = `\n\n【Liteプラン動作規定】\n・予約のキャンセルや変更の依頼があった場合、あなたにはそれを実行する機能がありません。\n・その代わり、「かしこまりました。担当者に申し伝えますので、店舗からの連絡をお待ちください。」と丁寧に案内してください。\n・決して「電話してください」や「自分でやってください」と突き放すような言い方はしないでください。`;
             }
 
+            const userMemo = user.internal_memo ? `\n\n【お客様メモ (スタッフ共有事項)】\n${user.internal_memo}\n※この情報はユーザーには見せず、接客の参考にしてください。` : "";
+
             const completionMessages: any[] = [
-                { role: "system", content: `現在の日時は ${now} です。\n` + tenant.system_prompt + contextText + (rawKeywords ? `\n\n【重要】現在有効な「担当者呼び出しパスワード」は『${rawKeywords}』です。ユーザーが担当者との会話を希望した場合のみ、「担当者にお繋ぎしますので『${rawKeywords}』と入力してください」と案内してください。` : "") + planInstructions },
+                { role: "system", content: `現在の日時は ${now} です。\n` + tenant.system_prompt + contextText + userMemo + (rawKeywords ? `\n\n【重要】現在有効な「担当者呼び出しパスワード」は『${rawKeywords}』です。ユーザーが担当者との会話を希望した場合のみ、「担当者にお繋ぎしますので『${rawKeywords}』と入力してください」と案内してください。` : "") + planInstructions },
                 ...historyMessages,
                 { role: "user", content: userMessage }
             ];
