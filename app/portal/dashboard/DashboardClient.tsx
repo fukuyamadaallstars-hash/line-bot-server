@@ -149,27 +149,8 @@ export default function DashboardClient({ tenant }: { tenant: any }) {
                                 )}
                             </div>
 
-                            {/* Add Single */}
-                            <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', marginBottom: '24px' }}>
-                                <h4 style={{ margin: '0 0 12px 0', fontSize: '0.9rem', color: '#64748b' }}>📝 1件ずつ追加</h4>
-                                <form action={addKnowledge} style={{ display: 'flex', gap: '8px' }}>
-                                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                        <select name="category" defaultValue={kbFilter === 'ALL' ? 'FAQ' : kbFilter} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-                                            <option value="FAQ">FAQ (よくある質問)</option>
-                                            <option value="OFFER">OFFER (キャンペーン)</option>
-                                            <option value="PRICE">PRICE (料金・コース)</option>
-                                            <option value="PROCESS">PROCESS (予約・流れ)</option>
-                                            <option value="POLICY">POLICY (キャンセル規定)</option>
-                                            <option value="CONTEXT">CONTEXT (店舗特徴・こだわり)</option>
-                                        </select>
-                                        <textarea name="content" placeholder="内容を入力..." required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', minHeight: '60px' }} />
-                                    </div>
-                                    <button type="submit" style={{ height: 'fit-content', background: 'white', border: '1px solid #cbd5e1', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer' }}>追加</button>
-                                </form>
-                            </div>
 
-
-                            {/* File Import */}
+                            {/* File Import (PDF/Word/CSV) - MOVED TO TOP */}
                             <div style={{ background: '#f0fdf4', padding: '16px', borderRadius: '8px', border: '1px dashed #bbf7d0', marginBottom: '24px' }}>
                                 <h4 style={{ margin: '0 0 12px 0', fontSize: '0.9rem', color: '#15803d' }}>📂 ファイルからインポート (PDF/Word/CSV)</h4>
                                 <form action={importKnowledgeFromFile}>
@@ -193,6 +174,28 @@ export default function DashboardClient({ tenant }: { tenant: any }) {
                                     </button>
                                 </form>
                             </div>
+
+                            {/* Add Single */}
+                            <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', marginBottom: '24px' }}>
+                                <h4 style={{ margin: '0 0 12px 0', fontSize: '0.9rem', color: '#64748b' }}>📝 1件ずつ追加</h4>
+                                <form action={addKnowledge} style={{ display: 'flex', gap: '8px' }}>
+                                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                        <select name="category" defaultValue={kbFilter === 'ALL' ? 'FAQ' : kbFilter} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                                            <option value="FAQ">FAQ (よくある質問)</option>
+                                            <option value="OFFER">OFFER (キャンペーン)</option>
+                                            <option value="PRICE">PRICE (料金・コース)</option>
+                                            <option value="PROCESS">PROCESS (予約・流れ)</option>
+                                            <option value="POLICY">POLICY (キャンセル規定)</option>
+                                            <option value="CONTEXT">CONTEXT (店舗特徴・こだわり)</option>
+                                        </select>
+                                        <textarea name="content" placeholder="内容を入力..." required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', minHeight: '60px' }} />
+                                    </div>
+                                    <button type="submit" style={{ height: 'fit-content', background: 'white', border: '1px solid #cbd5e1', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer' }}>追加</button>
+                                </form>
+                            </div>
+
+
+
 
                             {/* Bulk Import */}
                             <div style={{ background: '#f0f9ff', padding: '16px', borderRadius: '8px', border: '1px dashed #bae6fd' }}>
