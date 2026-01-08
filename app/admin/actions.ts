@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 import OpenAI from 'openai';
 import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
-const pdf = require('pdf-parse');
+// const pdf = require('pdf-parse'); // Disabled due to build issues
 import mammoth from 'mammoth';
 import Papa from 'papaparse';
 
@@ -368,10 +368,11 @@ export async function importKnowledgeFromFile(formData: FormData) {
 
     // File type detection
     if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
-        const arrayBuffer = await file.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
-        const data = await pdf(buffer);
-        textData = data.text;
+        // const arrayBuffer = await file.arrayBuffer();
+        // const buffer = Buffer.from(arrayBuffer);
+        // const data = await pdf(buffer);
+        // textData = data.text;
+        throw new Error('PDF support is temporarily disabled due to system upgrades. Please convert to Text or Word.');
     } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || file.name.endsWith('.docx')) {
         const arrayBuffer = await file.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
