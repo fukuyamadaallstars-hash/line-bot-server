@@ -104,6 +104,7 @@ const availableTools: Record<string, any> = {
                 type: "object",
                 properties: {
                     date: { type: "string", description: "対象の日付 (YYYY/MM/DD) - 省略可だが推奨" },
+                    reason: { type: "string", description: "キャンセルの理由" },
                 },
             },
         },
@@ -315,7 +316,7 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
         // プランごとの追加指示
         let planInstructions = "";
         if (tenant.plan === 'Standard' || tenant.plan === 'Enterprise') {
-            planInstructions = `\n\n【Standardプラン動作規定】\n・予約キャンセルの依頼があった場合は、いきなりキャンセルを実行せず、必ず『check_my_reservation』ツールを呼び出してユーザーの現在の予約状況を提示し、「こちらの予約をキャンセルしてよろしいですか？」と確認をとってください。\n・ユーザーから明確な同意（「はい」「お願いします」等）が得られた場合のみ、『cancel_reservation』を実行してください。`;
+            planInstructions = `\n\n【Standardプラン動作規定】\n・予約キャンセルの依頼があった場合は、いきなりキャンセルを実行せず、必ず『check_my_reservation』ツールを呼び出してユーザーの現在の予約状況を提示し、「こちらの予約をキャンセルしてよろしいですか？」と確認をとってください。\n・さらに、「差し支えなければキャンセルの理由をお聞かせください」と丁寧に伺ってください。\n・ユーザーから明確な同意が得られた場合のみ、『cancel_reservation』を実行してください。その際、理由があればreason引数に含めてください。`;
         } else {
             planInstructions = `\n\n【Liteプラン動作規定】\n・予約のキャンセルや変更の依頼があった場合、あなたにはそれを実行する機能がありません。\n・その代わり、「かしこまりました。担当者に申し伝えますので、店舗からの連絡をお待ちください。」と丁寧に案内してください。\n・決して「電話してください」や「自分でやってください」と突き放すような言い方はしないでください。`;
         }
@@ -428,7 +429,9 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
                             toolResult = `予約(ID: ${foundRes[0]}, 日時: ${foundRes[2]} ${foundRes[3]}) をキャンセルしました。またのご利用をお待ちしております。`;
 
                             // 通知
-                            const staffNotifyMsg = `【自己キャンセル】\n以前の予約(ID: ${foundRes[0]})がユーザー自身によりキャンセルされました。`;
+                            // ★理由がある場合は通知に含める
+                            const reasonText = args.reason ? `\n理由: ${args.reason}` : "";
+                            const staffNotifyMsg = `【自己キャンセル】\n以前の予約(ID: ${foundRes[0]})がユーザー自身によりキャンセルされました。${reasonText}`;
                             await sendNotification(tenant.notification_webhook_url, tenantId, staffNotifyMsg);
                         } else {
                             toolResult = "キャンセル可能な予約が見つかりませんでした。";
