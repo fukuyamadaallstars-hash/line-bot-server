@@ -444,3 +444,58 @@ export async function importKnowledgeFromFile(formData: FormData) {
 
     revalidatePath('/admin');
 }
+
+export async function reEmbedAllKnowledge(formData: FormData) {
+    await verifyAdmin();
+    const tenant_id = formData.get('tenant_id') as string;
+
+    // 1. Get current setting
+    const { data: tenant } = await supabase.from('tenants').select('embedding_model').eq('tenant_id', tenant_id).single();
+    const model = tenant?.embedding_model || 'text-embedding-3-small';
+
+    // 2. Fetch all knowledge
+    const { data: kbList, error: fetchError } = await supabase
+        .from('knowledge_base')
+        .select('id, content')
+        .eq('tenant_id', tenant_id);
+
+    if (fetchError || !kbList || kbList.length === 0) return; // Nothing to do
+
+    console.log(`[Re-Embed] Starting for ${tenant_id} with ${model}. Count: ${kbList.length}`);
+
+    // 3. Process in batches
+    const BATCH_SIZE = 10;
+    for (let i = 0; i < kbList.length; i += BATCH_SIZE) {
+        const batch = kbList.slice(i, i + BATCH_SIZE);
+        const inputs = batch.map(item => item.content.replace(/\n/g, ' '));
+
+        try {
+            const embeddingResponse = await openai.embeddings.create({
+                model: model,
+                input: inputs,
+            });
+
+            // Update each record individually
+            for (let j = 0; j < batch.length; j++) {
+                const item = batch[j];
+                const vec = embeddingResponse.data[j].embedding;
+
+                const updates: any = {};
+                if (model === 'text-embedding-3-large') {
+                    updates.embedding_large = vec;
+                    // clean up small? maybe not strictly required but safer to leave null or update logic
+                    // updates.embedding = null; 
+                } else {
+                    updates.embedding = vec;
+                    // updates.embedding_large = null;
+                }
+
+                await supabase.from('knowledge_base').update(updates).eq('id', item.id);
+            }
+        } catch (e) {
+            console.error('[Re-Embed] Error in batch', e);
+        }
+    }
+    console.log('[Re-Embed] Complete');
+    revalidatePath('/admin');
+}
