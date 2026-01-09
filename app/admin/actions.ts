@@ -292,17 +292,75 @@ export async function importKnowledgeFromText(formData: FormData) {
     // Filter out very short chunks (likely just headers like "FAQ" or "PROCESS")
     const validChunks = finalChunks.filter(c => c.content.length > 10);
 
-    // ★ 長すぎるチャンクは recursiveSplit で自動分割
+    // ★ AI自動Q&A生成: タグなしの長文をQ&A形式に変換
     const processedChunks: { content: string, category: string }[] = [];
+
     for (const chunk of validChunks) {
-        if (chunk.content.length > 800) {
-            // 長文なので分割
+        // タグ付きで短い（800文字以下）ならそのまま
+        if (chunk.content.length <= 800) {
+            processedChunks.push(chunk);
+            continue;
+        }
+
+        // 長文の場合はAIでQ&A生成を試みる
+        try {
+            console.log(`[AI Q&A生成] 長文を変換中... (${chunk.content.length}文字)`);
+
+            // 長すぎる場合は分割して処理（GPT-4oのコンテキスト制限対策）
+            const textParts = chunk.content.length > 6000
+                ? recursiveSplit(chunk.content, 5000, 200)
+                : [chunk.content];
+
+            for (const textPart of textParts) {
+                const qaResponse = await openai.chat.completions.create({
+                    model: "gpt-4o-mini",
+                    messages: [
+                        {
+                            role: "system",
+                            content: `あなたはFAQ生成の専門家です。
+与えられたテキストから、ユーザーが質問しそうな内容をQ&A形式で抽出してください。
+
+ルール：
+- 各Q&Aは「Q: 質問」「A: 回答」の形式で出力
+- 具体的で検索しやすい質問を作成
+- 1つのテキストから3〜10個程度のQ&Aを生成
+- 抽象的な内容でも「〇〇さんの考え方」「〇〇についての見解」などの形式でQ&A化
+- 料金、サービス内容、連絡先などは必ずQ&A化
+- Q&Aの間は空行で区切る`
+                        },
+                        {
+                            role: "user",
+                            content: `以下のテキストからQ&Aを生成してください：\n\n${textPart}`
+                        }
+                    ],
+                    temperature: 0.3,
+                    max_tokens: 2000
+                });
+
+                const qaText = qaResponse.choices[0]?.message?.content || "";
+
+                // Q&Aをパースして個別チャンクに
+                const qaBlocks = qaText.split(/\n\n+/).filter(b => b.trim());
+
+                for (const block of qaBlocks) {
+                    if (block.includes("Q:") && block.includes("A:")) {
+                        processedChunks.push({
+                            content: block.trim(),
+                            category: chunk.category || 'FAQ'
+                        });
+                    }
+                }
+            }
+
+            console.log(`[AI Q&A生成] ${processedChunks.length}件のQ&Aを生成`);
+
+        } catch (e: any) {
+            console.error('[AI Q&A生成] 失敗、フォールバックで分割:', e.message);
+            // フォールバック: 従来の分割方式
             const splitParts = recursiveSplit(chunk.content, 800, 100);
             for (const part of splitParts) {
                 processedChunks.push({ content: part, category: chunk.category });
             }
-        } else {
-            processedChunks.push(chunk);
         }
     }
 
