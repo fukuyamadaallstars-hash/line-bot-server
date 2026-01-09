@@ -8,7 +8,7 @@ import { jwtVerify } from 'jose';
 import mammoth from 'mammoth';
 import Papa from 'papaparse';
 import { encrypt, decrypt } from '@/lib/crypto';
-import * as pdfjsLib from 'pdfjs-dist';
+// import * as pdfjsLib from 'pdfjs-dist'; // Disabled - causes Vercel serverless issues
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -484,33 +484,8 @@ export async function importKnowledgeFromFile(formData: FormData) {
 
     // File type detection
     if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
-        // PDF処理（pdfjs-distを使用）
-        try {
-            const arrayBuffer = await file.arrayBuffer();
-            const uint8Array = new Uint8Array(arrayBuffer);
-
-            // PDF.jsでドキュメントをロード
-            const loadingTask = pdfjsLib.getDocument({ data: uint8Array });
-            const pdfDoc = await loadingTask.promise;
-
-            let fullText = '';
-
-            // 各ページからテキストを抽出
-            for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
-                const page = await pdfDoc.getPage(pageNum);
-                const textContent = await page.getTextContent();
-                const pageText = textContent.items
-                    .map((item: any) => item.str)
-                    .join(' ');
-                fullText += pageText + '\n\n';
-            }
-
-            textData = fullText.trim();
-            console.log(`[PDF] Extracted ${textData.length} characters from ${pdfDoc.numPages} pages`);
-        } catch (pdfError: any) {
-            console.error('[PDF Error]', pdfError);
-            throw new Error('PDFの読み込みに失敗しました: ' + pdfError.message);
-        }
+        // PDF処理 - 現在はサポート外（Vercel環境の制約）
+        throw new Error('PDFはWord(.docx)またはテキスト(.txt)に変換してからアップロードしてください。');
     } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || file.name.endsWith('.docx')) {
         const arrayBuffer = await file.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
