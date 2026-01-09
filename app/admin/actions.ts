@@ -290,14 +290,25 @@ export async function importKnowledgeFromText(formData: FormData) {
     }
 
     // Filter out very short chunks (likely just headers like "FAQ" or "PROCESS")
-    // Use 15 chars to be safe (e.g. "[FAQ-01] Title" is usually longer than 10-15)
-    // "[PROCESS]" is 9 chars. "[FAQ-01]" is 8 chars.
-    // User content "[FAQ-01] 1分デモ" is > 10 chars.
     const validChunks = finalChunks.filter(c => c.content.length > 10);
 
+    // ★ 長すぎるチャンクは recursiveSplit で自動分割
+    const processedChunks: { content: string, category: string }[] = [];
+    for (const chunk of validChunks) {
+        if (chunk.content.length > 800) {
+            // 長文なので分割
+            const splitParts = recursiveSplit(chunk.content, 800, 100);
+            for (const part of splitParts) {
+                processedChunks.push({ content: part, category: chunk.category });
+            }
+        } else {
+            processedChunks.push(chunk);
+        }
+    }
+
     // Process in batches
-    for (let i = 0; i < validChunks.length; i += 5) {
-        const batch = validChunks.slice(i, i + 5);
+    for (let i = 0; i < processedChunks.length; i += 5) {
+        const batch = processedChunks.slice(i, i + 5);
 
         const inputs = batch.map(c => c.content.replace(/\n/g, ' '));
         const embeddingResponse = await openai.embeddings.create({
