@@ -254,7 +254,9 @@ export async function importKnowledgeFromText(formData: FormData) {
 
         for (const cat of validCategories) {
             // Check if line STARTS with category (ignoring brackets, case insensitive)
-            // ^\[?CAT matches "CAT", "[CAT", "[CAT-01]"
+            // Match pattern: ^\[?CAT (e.g. [OFFER, OFFER)
+            // We want to verify it's a header line.
+            // Strict regex: Start with optional [, then Category Name
             const regex = new RegExp(`^(\\[?${cat})`, 'i');
             if (regex.test(trimmed)) {
                 detectedCat = cat;
@@ -267,7 +269,7 @@ export async function importKnowledgeFromText(formData: FormData) {
             if (currentBuffer) {
                 finalChunks.push({ content: currentBuffer, category: currentCategory });
             }
-            // Start new buffer
+            // Start new buffer with this line
             currentBuffer = trimmed;
             currentCategory = detectedCat;
         } else {
