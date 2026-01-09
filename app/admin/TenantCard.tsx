@@ -1,12 +1,91 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { updateTenant, addKnowledge, deleteKnowledge, deleteAllKnowledge, resumeAi, quickAddToken, addTokenPurchase, createInvoiceStub, importKnowledgeFromText, importKnowledgeFromFile, reEmbedAllKnowledge } from './actions';
+
+// PDF.js を動的に読み込むためのグローバル宣言
+declare global {
+    interface Window {
+        pdfjsLib: any;
+    }
+}
 
 export default function TenantCard({ tenant }: { tenant: any }) {
     const [isOpen, setIsOpen] = useState(false);
     const [activeTab, setActiveTab] = useState('basic'); // basic | billing | knowledge
     const [kbFilter, setKbFilter] = useState('ALL');
+    const [pdfStatus, setPdfStatus] = useState<string>('');
+    const [pdfText, setPdfText] = useState<string>('');
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // PDF.js ライブラリを動的にロード
+    useEffect(() => {
+        if (typeof window !== 'undefined' && !window.pdfjsLib) {
+            const script = document.createElement('script');
+            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+            script.async = true;
+            script.onload = () => {
+                if (window.pdfjsLib) {
+                    window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+                }
+            };
+            document.head.appendChild(script);
+        }
+    }, []);
+
+    // PDF ファイルからテキストを抽出する関数
+    const extractTextFromPdf = async (file: File): Promise<string> => {
+        return new Promise(async (resolve, reject) => {
+            try {
+                if (!window.pdfjsLib) {
+                    reject(new Error('PDF.js がまだ読み込まれていません。少し待ってから再度お試しください。'));
+                    return;
+                }
+
+                setPdfStatus('📄 PDFを解析中...');
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+                let fullText = '';
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    setPdfStatus(`📄 ページ ${i}/${pdf.numPages} を処理中...`);
+                    const page = await pdf.getPage(i);
+                    const textContent = await page.getTextContent();
+                    const pageText = textContent.items.map((item: any) => item.str).join(' ');
+                    fullText += pageText + '\n\n';
+                }
+
+                setPdfStatus('');
+                resolve(fullText.trim());
+            } catch (error: any) {
+                setPdfStatus('');
+                reject(error);
+            }
+        });
+    };
+
+    // ファイル選択時のハンドラ
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        // PDFの場合はクライアントサイドで処理
+        if (file.name.endsWith('.pdf') || file.type === 'application/pdf') {
+            try {
+                const text = await extractTextFromPdf(file);
+                setPdfText(text);
+                // テキストエリアに自動入力（テキストインポートフォームを使う）
+                alert(`✅ PDFから ${text.length} 文字を抽出しました。\n\n下の「テキストから一括登録」エリアにテキストが入力されました。内容を確認してSaveボタンを押してください。`);
+            } catch (error: any) {
+                alert('❌ PDF解析エラー: ' + error.message);
+            }
+            // ファイル入力をリセット
+            if (fileInputRef.current) {
+                fileInputRef.current.value = '';
+            }
+        }
+        // PDF以外は従来通りサーバーで処理（フォーム送信）
+    };
 
     return (
         <div className="bot-card" style={{ transition: 'all 0.3s ease' }}>
@@ -408,25 +487,64 @@ export default function TenantCard({ tenant }: { tenant: any }) {
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                                     <h5 style={{ margin: 0, fontSize: '0.9rem', color: '#64748b' }}>📂 ファイルからインポート (PDF/Word/CSV)</h5>
                                 </div>
-                                <form action={importKnowledgeFromFile} style={{ background: '#f0fdf4', padding: '12px', borderRadius: '8px', border: '1px solid #bbf7d0', marginBottom: '16px' }}>
-                                    <input type="hidden" name="tenant_id" value={tenant.tenant_id} />
+
+                                {/* PDF処理ステータス表示 */}
+                                {pdfStatus && (
+                                    <div style={{ background: '#dbeafe', padding: '12px', borderRadius: '8px', marginBottom: '12px', color: '#1e40af', fontSize: '0.9rem' }}>
+                                        {pdfStatus}
+                                    </div>
+                                )}
+
+                                {/* PDFはクライアントサイドで処理、他はサーバーで処理 */}
+                                <div style={{ background: '#f0fdf4', padding: '12px', borderRadius: '8px', border: '1px solid #bbf7d0', marginBottom: '16px' }}>
                                     <div style={{ marginBottom: '8px' }}>
-                                        <select name="category" className="kb-input" style={{ width: '100%', marginBottom: '8px' }} defaultValue="FAQ">
-                                            <option value="FAQ">FAQ (よくある質問)</option>
-                                            <option value="OFFER">OFFER (キャンペーン)</option>
-                                            <option value="PRICE">PRICE (料金・コース)</option>
-                                            <option value="PROCESS">PROCESS (予約・流れ)</option>
-                                            <option value="POLICY">POLICY (キャンセル規定)</option>
-                                            <option value="CONTEXT">CONTEXT (店舗特徴・こだわり)</option>
-                                        </select>
-                                        <input type="file" name="file" accept=".pdf,.docx,.csv,.txt" className="kb-input" style={{ width: '100%', background: 'white' }} required />
+                                        <input
+                                            type="file"
+                                            ref={fileInputRef}
+                                            accept=".pdf,.docx,.csv,.txt"
+                                            className="kb-input"
+                                            style={{ width: '100%', background: 'white' }}
+                                            onChange={handleFileChange}
+                                        />
                                         <div style={{ fontSize: '0.75rem', color: '#166534', marginTop: '4px' }}>
-                                            ※ PDF, Word, CSV, Textに対応。最大10MB。<br />
-                                            ※ 自動的に適切なサイズに分割(Chunking)されて登録されます。
+                                            ※ <strong>PDF</strong>: ブラウザで解析 → 下のテキストエリアに自動入力<br />
+                                            ※ <strong>Word/CSV/Text</strong>: 選択後にボタンでサーバー処理
                                         </div>
                                     </div>
-                                    <button type="submit" className="btn btn-primary" style={{ width: '100%', fontSize: '0.85rem', background: '#16a34a', borderColor: '#15803d' }}>📤 ファイルを解析して一括登録</button>
-                                </form>
+                                    <form action={importKnowledgeFromFile}>
+                                        <input type="hidden" name="tenant_id" value={tenant.tenant_id} />
+                                        <input type="hidden" name="category" value="FAQ" />
+                                        <input type="hidden" name="file" value="" />
+                                        <button
+                                            type="submit"
+                                            className="btn btn-primary"
+                                            style={{ width: '100%', fontSize: '0.85rem', background: '#16a34a', borderColor: '#15803d' }}
+                                            onClick={(e) => {
+                                                const fileInput = fileInputRef.current;
+                                                if (!fileInput?.files?.[0]) {
+                                                    e.preventDefault();
+                                                    alert('ファイルを選択してください');
+                                                    return;
+                                                }
+                                                const file = fileInput.files[0];
+                                                if (file.name.endsWith('.pdf')) {
+                                                    e.preventDefault();
+                                                    alert('PDFは自動的に下のテキストエリアに入力されます。\nテキストエリアの内容を確認して「AI自動分割して一括登録」ボタンを押してください。');
+                                                    return;
+                                                }
+                                                // PDF以外はフォーム送信（サーバー処理）
+                                                const formData = new FormData();
+                                                formData.append('tenant_id', tenant.tenant_id);
+                                                formData.append('category', 'FAQ');
+                                                formData.append('file', file);
+                                                importKnowledgeFromFile(formData);
+                                                e.preventDefault();
+                                            }}
+                                        >
+                                            📤 Word/CSV/Textを解析して一括登録
+                                        </button>
+                                    </form>
+                                </div>
 
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                                     <h5 style={{ margin: 0, fontSize: '0.9rem', color: '#64748b' }}>📝 テキスト貼り付け・一括削除</h5>
@@ -458,8 +576,10 @@ export default function TenantCard({ tenant }: { tenant: any }) {
                                         <textarea
                                             name="text"
                                             className="prompt-textarea"
-                                            placeholder="ここに長文を貼り付けてください。&#13;&#10;・段落ごとに自動分割されます。&#13;&#10;・文頭に [FAQ] や [PRICE] などのカテゴリ名を書くと、自動でそのカテゴリに振り分けられます。&#13;&#10;・カテゴリ指定がない場合は、上のプルダウンで選択したカテゴリが適用されます。"
+                                            placeholder="ここに長文を貼り付けてください。&#13;&#10;・段落ごとに自動分割されます。&#13;&#10;・文頭に [FAQ] や [PRICE] などのカテゴリ名を書くと、自動でそのカテゴリに振り分けられます。&#13;&#10;・カテゴリ指定がない場合は、上のプルダウンで選択したカテゴリが適用されます。&#13;&#10;・PDFを選択すると、ここに自動入力されます。"
                                             style={{ height: '120px', width: '100%', fontSize: '0.8rem' }}
+                                            defaultValue={pdfText}
+                                            key={pdfText} // pdfTextが変わったら再レンダリング
                                         />
                                     </div>
                                     <button type="submit" className="btn btn-primary" style={{ width: '100%', fontSize: '0.85rem' }}>🚀 AI自動分割して一括登録</button>
