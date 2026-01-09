@@ -250,642 +250,643 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
                         return;
                     }
                 }
-                // 3. 今日の予約確認 (#TODAY, #SCHEDULE)
-                if (command === '#TODAY' || command === '#SCHEDULE') {
-                    if (!user.is_staff) return;
+            }
+            // 3. 今日の予約確認 (#TODAY, #SCHEDULE)
+            if (command === '#TODAY' || command === '#SCHEDULE') {
+                if (!user.is_staff) return;
 
-                    const sheets = await getGoogleSheetsClient();
-                    const sheetId = tenant.google_sheet_id;
-                    if (!sheets || !sheetId) {
-                        await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: 'Error: Google Sheets not connected' }] });
-                        return;
-                    }
-
-                    const resp = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: 'Sheet1!A:D' });
-                    const rows = resp.data.values || [];
-                    // rows: [ID, Status, Date, Time, ...]
-
-                    // Get JST today YYYY/MM/DD
-                    const jaToday = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
-                    const todayStr = jaToday.split(' ')[0]; // "2024/1/9" (format depends on locale string in environment, ensuring consistency)
-                    // Normalize "2024/01/09" vs "2024/1/9" might be needed. 
-                    // Let's rely on simple string includes or standard format YYYY/MM/DD if stored that way.
-                    // Better: Construct YYYY/MM/DD manually
-                    const d = new Date();
-                    const yyyy = d.getFullYear();
-                    const mm = String(d.getMonth() + 1).padStart(2, '0');
-                    const dd = String(d.getDate()).padStart(2, '0');
-                    const todayTarget = `${yyyy}/${mm}/${dd}`;
-
-                    const todayReservations = rows.filter(row => row[2] === todayTarget && row[1] !== 'CANCELLED');
-
-                    if (todayReservations.length === 0) {
-                        await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `📅 ${todayTarget} の予約はありません。` }] });
-                        return;
-                    }
-
-                    const msgLines = todayReservations.map(row => `・${row[3]}~ (ID:${row[0]})`);
-                    const msg = `📅 ${todayTarget} の予約:\n\n${msgLines.join('\n')}`;
-
-                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: msg }] });
+                const sheets = await getGoogleSheetsClient();
+                const sheetId = tenant.google_sheet_id;
+                if (!sheets || !sheetId) {
+                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: 'Error: Google Sheets not connected' }] });
                     return;
                 }
 
-                // 4. 一斉配信 (#BROADCAST <MESSAGE>)
-                if (command === '#BROADCAST') {
-                    if (!user.is_staff) return;
-                    const broadcastMsg = args.slice(1).join(' ');
-                    if (!broadcastMsg) {
-                        await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '使い方: #BROADCAST <メッセージ内容>' }] });
-                        return;
-                    }
+                const resp = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: 'Sheet1!A:D' });
+                const rows = resp.data.values || [];
+                // rows: [ID, Status, Date, Time, ...]
 
-                    // DBから該当テナントの友だち全取得 (LINE APIのBroadCastは全体に行く可能性があるため、DBベースでMulticastする)
-                    const { data: allUsers } = await supabase.from('users').select('user_id').eq('tenant_id', tenantId);
+                // Get JST today YYYY/MM/DD
+                const jaToday = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
+                const todayStr = jaToday.split(' ')[0]; // "2024/1/9" (format depends on locale string in environment, ensuring consistency)
+                // Normalize "2024/01/09" vs "2024/1/9" might be needed. 
+                // Let's rely on simple string includes or standard format YYYY/MM/DD if stored that way.
+                // Better: Construct YYYY/MM/DD manually
+                const d = new Date();
+                const yyyy = d.getFullYear();
+                const mm = String(d.getMonth() + 1).padStart(2, '0');
+                const dd = String(d.getDate()).padStart(2, '0');
+                const todayTarget = `${yyyy}/${mm}/${dd}`;
 
-                    if (!allUsers || allUsers.length === 0) {
-                        await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '送信対象のユーザーがいません。' }] });
-                        return;
-                    }
+                const todayReservations = rows.filter(row => row[2] === todayTarget && row[1] !== 'CANCELLED');
 
-                    // LINE Multicast API (Max 500 at a time)
-                    const userIds = allUsers.map((u: any) => u.user_id);
-                    // Chunk by 500
-                    for (let i = 0; i < userIds.length; i += 500) {
-                        const chunk = userIds.slice(i, i + 500);
-                        await lineClient.multicast(chunk, [{ type: 'text', text: broadcastMsg }]);
-                    }
-
-                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `📣 ${userIds.length}人にメッセージを配信しました。` }] });
+                if (todayReservations.length === 0) {
+                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `📅 ${todayTarget} の予約はありません。` }] });
                     return;
                 }
 
-                // 5. 予約枠ブロック・代理登録 (#BLOCK <YYYY/MM/DD> <HH:MM> <MEMO>)
-                if (command === '#BLOCK') {
-                    if (!user.is_staff) return;
-                    const bDate = args[1]; // YYYY/MM/DD
-                    const bTime = args[2]; // HH:MM
-                    const bMemo = args.slice(3).join(' ') || '店舗都合';
+                const msgLines = todayReservations.map(row => `・${row[3]}~ (ID:${row[0]})`);
+                const msg = `📅 ${todayTarget} の予約:\n\n${msgLines.join('\n')}`;
 
-                    if (!bDate || !bTime) {
-                        await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '使い方: #BLOCK <日付> <時間> <メモ>\n例: #BLOCK 2026/01/20 14:00 電話予約' }] });
-                        return;
-                    }
-
-                    const sheets = await getGoogleSheetsClient();
-                    const sheetId = tenant.google_sheet_id;
-                    if (!sheets || !sheetId) {
-                        await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: 'Error: Google Sheets not connected' }] });
-                        return;
-                    }
-
-                    const resId = Math.random().toString(36).substring(2, 8).toUpperCase();
-                    const newRow = [
-                        resId,             // A: ID
-                        'CONFIRMED',       // B: Status (最初から確定)
-                        bDate,             // C: Date
-                        bTime,             // D: Time
-                        '(店舗ブロック)',   // E: Name
-                        bMemo,             // F: Details
-                        new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }), // G: CreatedAt
-                        ''                 // H: LINE User ID (空)
-                    ];
-
-                    await sheets.spreadsheets.values.append({
-                        spreadsheetId: sheetId, range: 'Sheet1!A:H', valueInputOption: 'USER_ENTERED',
-                        requestBody: { values: [newRow] }
-                    });
-
-                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `✅ 予約枠をブロックしました。\n\nID: ${resId}\n日時: ${bDate} ${bTime}\nメモ: ${bMemo}` }] });
-                    return;
-                }
-
-                // 6. 顧客メモ (#MEMO <お名前部分一致> <内容>)
-                if (command === '#MEMO') {
-                    if (!user.is_staff) return;
-                    const targetName = args[1];
-                    const memoContent = args.slice(2).join(' ');
-
-                    if (!targetName || !memoContent) {
-                        await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '使い方: #MEMO <お客様名> <メモ内容>\n例: #MEMO 山田 カラー剤アレルギーあり' }] });
-                        return;
-                    }
-
-                    // 名前で検索
-                    const { data: foundUsers } = await supabase.from('users')
-                        .select('user_id, display_name, internal_memo')
-                        .eq('tenant_id', tenantId)
-                        .ilike('display_name', `%${targetName}%`)
-                        .limit(5);
-
-                    if (!foundUsers || foundUsers.length === 0) {
-                        await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `「${targetName}」に一致するユーザーが見つかりません。` }] });
-                        return;
-                    }
-
-                    if (foundUsers.length > 1) {
-                        const names = foundUsers.map((u: any) => u.display_name).join(', ');
-                        await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `複数がヒットしました: ${names}\nもう少し詳しく指定してください。` }] });
-                        return;
-                    }
-
-                    const targetUser = foundUsers[0];
-                    const newMemo = (targetUser.internal_memo ? targetUser.internal_memo + "\n" : "") + `・${memoContent} (${new Date().toLocaleDateString()})`;
-
-                    await supabase.from('users').update({ internal_memo: newMemo }).eq('tenant_id', tenantId).eq('user_id', targetUser.user_id);
-
-                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `✅ メモを保存しました。\n対象: ${targetUser.display_name}\n内容: ${memoContent}` }] });
-                    return;
-                }
-
-                // 7. 明日の予約一覧 (#TOMORROW)
-                if (command === '#TOMORROW') {
-                    if (!user.is_staff) return;
-
-                    const sheets = await getGoogleSheetsClient();
-                    const sheetId = tenant.google_sheet_id;
-                    if (!sheets || !sheetId) {
-                        await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: 'Error: Google Sheets not connected' }] });
-                        return;
-                    }
-
-                    const d = new Date();
-                    d.setDate(d.getDate() + 1); // Add 1 day
-                    const yyyy = d.getFullYear();
-                    const mm = String(d.getMonth() + 1).padStart(2, '0');
-                    const dd = String(d.getDate()).padStart(2, '0');
-                    const targetDate = `${yyyy}/${mm}/${dd}`;
-
-                    const resp = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: 'Sheet1!A:D' });
-                    const rows = resp.data.values || [];
-                    const tomorrowReservations = rows.filter(row => row[2] === targetDate && row[1] !== 'CANCELLED');
-
-                    if (tomorrowReservations.length === 0) {
-                        await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `📅 明日 (${targetDate}) の予約はありません。` }] });
-                        return;
-                    }
-
-                    const msgLines = tomorrowReservations.map(row => `・${row[3]}~ (ID:${row[0]})`);
-                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `📅 明日 (${targetDate}) の予約:\n\n${msgLines.join('\n')}` }] });
-                    return;
-                }
-
-                // 8. 明日までの空き確認 (#VACANCY)
-                if (command === '#VACANCY') {
-                    if (!user.is_staff) return;
-
-                    const sheets = await getGoogleSheetsClient();
-                    const sheetId = tenant.google_sheet_id;
-                    if (!sheets || !sheetId) {
-                        await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: 'Error: Google Sheets not connected' }] });
-                        return;
-                    }
-
-                    const resp = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: 'Sheet1!A:D' });
-                    const rows = resp.data.values || [];
-
-                    // Config: 11:00 - 20:00 (Simple assumption)
-                    const openHours = [11, 12, 13, 14, 15, 16, 17, 18, 19];
-
-                    const checkDays = [0, 1]; // Today, Tomorrow
-                    let resultMsg = "🈳 明日までの空き状況:\n(目安: 11:00-20:00)\n";
-
-                    const todayBase = new Date();
-
-                    for (const offset of checkDays) {
-                        const d = new Date(todayBase);
-                        d.setDate(d.getDate() + offset);
-                        const yyyy = d.getFullYear();
-                        const mm = String(d.getMonth() + 1).padStart(2, '0');
-                        const dd = String(d.getDate()).padStart(2, '0');
-                        const dateStr = `${yyyy}/${mm}/${dd}`;
-                        const label = offset === 0 ? "今日" : "明日";
-
-                        const dayRows = rows.filter(row => row[2] === dateStr && row[1] !== 'CANCELLED');
-                        const bookedTimes = dayRows.map(row => row[3]); // "14:00"
-
-                        const freeSlots = [];
-                        for (const h of openHours) {
-                            const timeStr = `${h}:00`;
-                            // Simple match: Starts with "14:"
-                            const isBooked = bookedTimes.some(t => t.startsWith(`${h}:`));
-                            if (!isBooked) freeSlots.push(timeStr);
-                        }
-
-                        if (freeSlots.length > 0) {
-                            resultMsg += `\n▼${label} (${dateStr})\n` + freeSlots.join(', ');
-                        } else {
-                            resultMsg += `\n▼${label} (${dateStr})\n🈵 満席`;
-                        }
-                    }
-
-                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: resultMsg }] });
-                    return;
-                }
-            } // End of Staff Command Handler
-
-            const check = checkSensitivy(userMessage, customKeywords);
-
-            if (check.found && check.level === 'critical') {
-                await supabase.from('users').update({ is_handoff_active: true, status: 'attention_required' }).eq('tenant_id', tenantId).eq('user_id', userId);
-                await sendNotification(tenant.notification_webhook_url, tenantId, `有人切替: ${userMessage}`);
-                await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '担当者が確認します。AI応答を停止しました。' }] });
+                await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: msg }] });
                 return;
             }
 
-            // ★仕様4: トークン上限・通知 (80% / 95% / 100%)
-            const { data: usageData } = await supabase.from('usage_logs').select('token_usage').eq('tenant_id', tenantId);
-            const currentTotal = usageData?.reduce((s: number, l: any) => s + (l.token_usage || 0), 0) || 0;
-            const limit = tenant.monthly_token_limit;
-
-            if (limit > 0) {
-                const ratio = currentTotal / limit;
-
-                // 停止処理 (100%超)
-                if (ratio >= 1.0) {
-                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '【システム通知】\n今月のAI利用枠の上限に達したため、応答を一時停止しています。\n再開するには追加枠の購入が必要です。' }] });
-                    // 既に通知済みでなければ顧客へ通知するロジックを本来は入れる
+            // 4. 一斉配信 (#BROADCAST <MESSAGE>)
+            if (command === '#BROADCAST') {
+                if (!user.is_staff) return;
+                const broadcastMsg = args.slice(1).join(' ');
+                if (!broadcastMsg) {
+                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '使い方: #BROADCAST <メッセージ内容>' }] });
                     return;
                 }
 
-                // 警告通知 (80% または 95% のしきい値を跨いだ時だけ通知すべきだが、簡易的に毎回ログに残すか、別途通知履歴テーブルが必要)
-                // ここでは簡易的に「管理画面Webhook」へ通知を送る (95%以上ならCritical)
-                if (ratio >= 0.95) {
-                    await sendNotification(tenant.notification_webhook_url, tenantId, `⚠️ Token Usage Critical: ${(ratio * 100).toFixed(1)}% used.`);
-                } else if (ratio >= 0.80 && ratio < 0.81) { // 80%付近のみ (連投防止のため狭める)
-                    await sendNotification(tenant.notification_webhook_url, tenantId, `⚠️ Token Usage Warning: ${(ratio * 100).toFixed(1)}% used.`);
-                }
-            }
+                // DBから該当テナントの友だち全取得 (LINE APIのBroadCastは全体に行く可能性があるため、DBベースでMulticastする)
+                const { data: allUsers } = await supabase.from('users').select('user_id').eq('tenant_id', tenantId);
 
-            const openai = new OpenAI({ apiKey: openaiApiKey });
-
-            // Embedding Model Selection based on tenant config
-            const embeddingModel = tenant.embedding_model || "text-embedding-3-small";
-            const isLargeEmbedding = embeddingModel === "text-embedding-3-large";
-
-            const embeddingRes = await openai.embeddings.create({ model: embeddingModel, input: userMessage });
-            const queryVector = embeddingRes.data[0].embedding;
-
-            // ★Update: Use Hybrid Search (Vector + Keyword)
-            try {
-                let matchedKnowledge: any[] = [];
-
-                if (isLargeEmbedding) {
-                    // Call Large Model RPC (3072 dim)
-                    const { data } = await supabase.rpc('match_knowledge_hybrid_large', {
-                        query_text: userMessage,
-                        query_embedding: queryVector,
-                        match_threshold: 0.3,
-                        match_count: 3,
-                        p_tenant_id: tenantId
-                    });
-                    matchedKnowledge = data;
-                } else {
-                    // Call Standard Model RPC (1536 dim)
-                    const { data } = await supabase.rpc('match_knowledge_hybrid', {
-                        query_text: userMessage,
-                        query_embedding: queryVector,
-                        match_threshold: 0.3,
-                        match_count: 3,
-                        p_tenant_id: tenantId
-                    });
-                    matchedKnowledge = data;
+                if (!allUsers || allUsers.length === 0) {
+                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '送信対象のユーザーがいません。' }] });
+                    return;
                 }
 
-                // カテゴリをバッジとして付与してAIに渡す
-                var contextText = matchedKnowledge?.length > 0 ?
-                    "\n\n【参考資料】\n" + matchedKnowledge.map((k: any) => `- [${k.category || 'FAQ'}] ${k.content.substring(0, 800)}`).join("\n")
-                    : "";
-            } catch (e) {
-                console.error('Hybrid search failed, falling back to simple vector:', e);
-                // Fallback for Small model only (Legacy RPC match_knowledge takes 1536 dim)
-                if (!isLargeEmbedding) {
-                    const { data: matchedKnowledge } = await supabase.rpc('match_knowledge', {
-                        query_embedding: queryVector, match_threshold: 0.3, match_count: 2, p_tenant_id: tenantId
-                    });
-                    contextText = matchedKnowledge?.length > 0 ?
-                        "\n\n【参考資料】\n" + matchedKnowledge.map((k: any) => `- [${k.category || 'FAQ'}] ${k.content.substring(0, 500)}`).join("\n")
-                        : "";
-                } else {
-                    contextText = ""; // No fallback for large model (schema mismatch)
+                // LINE Multicast API (Max 500 at a time)
+                const userIds = allUsers.map((u: any) => u.user_id);
+                // Chunk by 500
+                for (let i = 0; i < userIds.length; i += 500) {
+                    const chunk = userIds.slice(i, i + 500);
+                    await lineClient.multicast(chunk, [{ type: 'text', text: broadcastMsg }]);
                 }
+
+                await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `📣 ${userIds.length}人にメッセージを配信しました。` }] });
+                return;
             }
 
-            // messages配列を any[] として定義
-            const now = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
+            // 5. 予約枠ブロック・代理登録 (#BLOCK <YYYY/MM/DD> <HH:MM> <MEMO>)
+            if (command === '#BLOCK') {
+                if (!user.is_staff) return;
+                const bDate = args[1]; // YYYY/MM/DD
+                const bTime = args[2]; // HH:MM
+                const bMemo = args.slice(3).join(' ') || '店舗都合';
 
-            // ★履歴取得 (直近6件 = 3ターン分)
-            const { data: historyData } = await supabase
-                .from('chat_history')
-                .select('role, content')
-                .eq('tenant_id', tenantId)
-                .eq('user_id', userId)
-                .order('created_at', { ascending: false })
-                .limit(20);
+                if (!bDate || !bTime) {
+                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '使い方: #BLOCK <日付> <時間> <メモ>\n例: #BLOCK 2026/01/20 14:00 電話予約' }] });
+                    return;
+                }
 
-            // 履歴は新しい順に来るので、古い順に戻す
-            const historyMessages = (historyData || []).reverse().map((h: any) => ({ role: h.role, content: h.content }));
-
-            // プランごとの追加指示
-            let planInstructions = "";
-            if (tenant.plan === 'Standard' || tenant.plan === 'Enterprise') {
-                planInstructions = `\n\n【Standardプラン動作規定】\n・予約キャンセルの依頼があった場合は、いきなりキャンセルを実行せず、必ず『check_my_reservation』ツールを呼び出してユーザーの現在の予約状況を提示し、「こちらの予約をキャンセルしてよろしいですか？」と確認をとってください。\n・さらに、「差し支えなければキャンセルの理由をお聞かせください」と丁寧に伺ってください。\n・ユーザーから明確な同意が得られた場合のみ、『cancel_reservation』を実行してください。その際、理由があればreason引数に含めてください。`;
-            } else {
-                planInstructions = `\n\n【Liteプラン動作規定】\n・予約のキャンセルや変更の依頼があった場合、あなたにはそれを実行する機能がありません。\n・その代わり、「かしこまりました。担当者に申し伝えますので、店舗からの連絡をお待ちください。」と丁寧に案内してください。\n・決して「電話してください」や「自分でやってください」と突き放すような言い方はしないでください。`;
-            }
-
-            const userMemo = user.internal_memo ? `\n\n【お客様メモ (スタッフ共有事項)】\n${user.internal_memo}\n※この情報はユーザーには見せず、接客の参考にしてください。` : "";
-
-            const completionMessages: any[] = [
-                { role: "system", content: `現在の日時は ${now} です。\n` + tenant.system_prompt + contextText + userMemo + (rawKeywords ? `\n\n【重要】現在有効な「担当者呼び出しパスワード」は『${rawKeywords}』です。ユーザーが担当者との会話を希望した場合のみ、「担当者にお繋ぎしますので『${rawKeywords}』と入力してください」と案内してください。` : "") + planInstructions },
-                ...historyMessages,
-                { role: "user", content: userMessage }
-            ];
-
-            // モデル選択
-            const selectedModel = tenant.ai_model || "gpt-4o-mini";
-            const isThinkingModel = selectedModel.includes('gpt-5.1') || selectedModel.includes('gpt-5.2');
-
-            // ★非同期推論フロー (GPT-5.1/5.2)
-            if (isThinkingModel) {
-                // 1. 即時応答 (Reply API)
-                await lineClient.replyMessage({
-                    replyToken: event.replyToken,
-                    messages: [{ type: 'text', text: '🧠 専門知識を元に深く考えています... 少々お待ちください。' }]
-                });
-
-                // 2. 非同期処理実行 (本来は waitUntil 等を使うが、関数内で Promise を detach する)
-                (async () => {
-                    try {
-                        const completionParams: any = {
-                            model: selectedModel,
-                            messages: completionMessages,
-                        };
-                        // Thinking models might not support tools well yet, or take too long, but we include if configured
-                        if (tenant.google_sheet_id) {
-                            completionParams.tools = getTools(tenant.plan || 'Lite');
-                        }
-
-                        const completion = await openai.chat.completions.create(completionParams);
-                        const choice = completion.choices[0];
-                        let aiResponse = choice.message.content;
-
-                        // Note: Tool calls handling in async mode is complex. For now, if tool calls exist, we just execute them and push result.
-                        // Ideally recursion is needed like the sync flow.
-                        if (choice.message.tool_calls) {
-                            // ... (Tool handling logic similar to sync flow, but using Push API for output)
-                            // For simplicity in this iteration, we fallback to text if tool is used, or perform 1 hop.
-                            // Here we implement basic tool execution and response.
-                            const sheets = await getGoogleSheetsClient();
-                            const sheetId = tenant.google_sheet_id;
-                            if (sheets && sheetId) {
-                                completionMessages.push(choice.message);
-                                for (const toolCall of choice.message.tool_calls) {
-                                    const tc = toolCall as any;
-                                    const args = JSON.parse(tc.function.arguments);
-                                    let toolResult = "";
-                                    // ... (Tool logic duplicated or refactored) ...
-                                    // For brevity, let's assume simple answer generation after tool use
-                                    // Simplified tool logic for Async flow:
-                                    if (tc.function.name === 'check_schedule') {
-                                        // ... duplicated logic ...
-                                        toolResult = "（スケジュール確認完了）"; // Placeholder
-                                    } else {
-                                        toolResult = "（処理完了）";
-                                    }
-                                    completionMessages.push({ role: "tool", content: toolResult, tool_call_id: toolCall.id });
-                                }
-                                const secondResponse = await openai.chat.completions.create({ model: selectedModel, messages: completionMessages });
-                                aiResponse = secondResponse.choices[0].message.content;
-                            }
-                        }
-
-                        if (aiResponse) {
-                            await lineClient.pushMessage({
-                                to: userId,
-                                messages: [{ type: 'text', text: aiResponse }]
-                            });
-
-                            // Save History
-                            await supabase.from('chat_history').insert([
-                                { tenant_id: tenantId, user_id: userId, role: 'user', content: userMessage },
-                                { tenant_id: tenantId, user_id: userId, role: 'assistant', content: aiResponse }
-                            ]);
-                            await supabase.from('usage_logs').insert({
-                                tenant_id: tenantId, user_id: userId, event_id: eventId,
-                                message_type: 'text', token_usage: completion.usage?.total_tokens || 0, status: 'success_async'
-                            });
-                        }
-                    } catch (e) {
-                        console.error('Async processing failed', e);
-                        await lineClient.pushMessage({ to: userId, messages: [{ type: 'text', text: '申し訳ありません。処理中にエラーが発生しました。' }] });
-                    }
-                })();
-
-                return; // End Sync Flow
-            }
-
-            // --- 以下、通常モデル(Legacy)の同期フロー ---
-
-            const completionParams: any = {
-                model: selectedModel,
-                messages: completionMessages,
-            };
-
-            if (tenant.google_sheet_id) {
-                completionParams.tools = getTools(tenant.plan || 'Lite');
-            }
-
-            const completion = await openai.chat.completions.create(completionParams);
-
-            const choice = completion.choices[0];
-            console.log(`[DEBUG] First AI Response: Content="${choice.message.content?.substring(0, 20)}...", ToolCalls=${choice.message.tool_calls ? choice.message.tool_calls.length : 0}`);
-
-            let aiResponse = choice.message.content;
-
-            if (choice.message.tool_calls) {
                 const sheets = await getGoogleSheetsClient();
                 const sheetId = tenant.google_sheet_id;
+                if (!sheets || !sheetId) {
+                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: 'Error: Google Sheets not connected' }] });
+                    return;
+                }
 
-                if (sheets && sheetId) {
-                    console.log(`[DEBUG] Tool execution started for ${choice.message.tool_calls.length} calls.`);
+                const resId = Math.random().toString(36).substring(2, 8).toUpperCase();
+                const newRow = [
+                    resId,             // A: ID
+                    'CONFIRMED',       // B: Status (最初から確定)
+                    bDate,             // C: Date
+                    bTime,             // D: Time
+                    '(店舗ブロック)',   // E: Name
+                    bMemo,             // F: Details
+                    new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }), // G: CreatedAt
+                    ''                 // H: LINE User ID (空)
+                ];
 
-                    // Assistantのメッセージ（ToolCall要求）は一度だけ履歴に追加する
-                    completionMessages.push(choice.message);
+                await sheets.spreadsheets.values.append({
+                    spreadsheetId: sheetId, range: 'Sheet1!A:H', valueInputOption: 'USER_ENTERED',
+                    requestBody: { values: [newRow] }
+                });
 
-                    let toolResult = "";
+                await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `✅ 予約枠をブロックしました。\n\nID: ${resId}\n日時: ${bDate} ${bTime}\nメモ: ${bMemo}` }] });
+                return;
+            }
 
-                    for (const toolCall of choice.message.tool_calls) {
-                        const tc = toolCall as any;
-                        const args = JSON.parse(tc.function.arguments);
-                        console.log(`[DEBUG] Tool Call: ${tc.function.name}, Args=${JSON.stringify(args)}, SheetID=${sheetId}`);
+            // 6. 顧客メモ (#MEMO <お名前部分一致> <内容>)
+            if (command === '#MEMO') {
+                if (!user.is_staff) return;
+                const targetName = args[1];
+                const memoContent = args.slice(2).join(' ');
 
-                        if (tc.function.name === 'check_schedule') {
-                            const resp = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: 'Sheet1!A:D' });
-                            const rows = resp.data.values || [];
-                            const targeted = rows
-                                .filter(row => row[0] === args.date)
-                                .map(row => `${row[1]} : 予約済`);
-                            toolResult = targeted.length > 0 ? "【現在の予約状況】\n" + targeted.join("\n") : "その日の予約は入っていません。";
-                        }
-                        else if (tc.function.name === 'add_reservation') {
-                            const reservationId = crypto.randomUUID().split('-')[0];
-                            const jstTime = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
-                            await sheets.spreadsheets.values.append({
-                                spreadsheetId: sheetId, range: 'Sheet1', valueInputOption: 'USER_ENTERED',
-                                requestBody: { values: [[reservationId, 'PENDING', args.date, args.time, args.name, args.details || '', jstTime, userId]] }
-                            });
-                            toolResult = `仮予約を受付けました。\n予約ID: ${reservationId}\nお店からの確定連絡をお待ちください。`;
+                if (!targetName || !memoContent) {
+                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '使い方: #MEMO <お客様名> <メモ内容>\n例: #MEMO 山田 カラー剤アレルギーあり' }] });
+                    return;
+                }
 
-                            const staffNotifyMsg = `【新規予約依頼】\n予約ID: ${reservationId}\n日時: ${args.date} ${args.time}\nお名前: ${args.name}\n内容: ${args.details || '-'}\n\n確定する場合:\n#CONFIRM ${reservationId}\n\nキャンセルする場合 (理由なし):\n#CANCEL ${reservationId}\n\nキャンセルする場合 (理由あり):\n#CANCEL ${reservationId} 満席のため`;
-                            await sendNotification(tenant.notification_webhook_url, tenantId, staffNotifyMsg);
+                // 名前で検索
+                const { data: foundUsers } = await supabase.from('users')
+                    .select('user_id, display_name, internal_memo')
+                    .eq('tenant_id', tenantId)
+                    .ilike('display_name', `%${targetName}%`)
+                    .limit(5);
 
-                            const { data: staffMembers } = await supabase.from('users').select('user_id').eq('tenant_id', tenantId).eq('is_staff', true);
-                            if (staffMembers && staffMembers.length > 0) {
-                                for (const sm of staffMembers) {
-                                    try {
-                                        await lineClient.pushMessage({
-                                            to: sm.user_id,
-                                            messages: [{ type: 'text', text: staffNotifyMsg }]
-                                        });
-                                    } catch (e) { console.error('Staff push failed', e); }
-                                }
-                            }
-                        }
-                        else if (tc.function.name === 'cancel_reservation') {
-                            // ユーザーID一致かつ未来の予約を探す
-                            const resp = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: 'Sheet1!A:H' });
-                            const rows = resp.data.values || [];
-                            // 予約行を探す (H列=User ID, B列=Status, C列=Date)
-                            let targetRowIndex = -1;
-                            let foundRes: any = null;
+                if (!foundUsers || foundUsers.length === 0) {
+                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `「${targetName}」に一致するユーザーが見つかりません。` }] });
+                    return;
+                }
 
-                            // 日付指定があればそれで、なければ直近のPENDING/CONFIRMEDを探す
-                            for (let i = 0; i < rows.length; i++) {
-                                const row = rows[i];
-                                const rUserId = row[7];
-                                const rStatus = row[1];
-                                const rDate = row[2];
+                if (foundUsers.length > 1) {
+                    const names = foundUsers.map((u: any) => u.display_name).join(', ');
+                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `複数がヒットしました: ${names}\nもう少し詳しく指定してください。` }] });
+                    return;
+                }
 
-                                if (rUserId === userId && (rStatus === 'PENDING' || rStatus === 'CONFIRMED')) {
-                                    if (args.date) {
-                                        if (rDate === args.date) { targetRowIndex = i; foundRes = row; break; }
-                                    } else {
-                                        // 指定なしなら最初に見つかったもの（あるいは本来は未来で一番近いもの）
-                                        targetRowIndex = i; foundRes = row; break;
-                                    }
-                                }
-                            }
+                const targetUser = foundUsers[0];
+                const newMemo = (targetUser.internal_memo ? targetUser.internal_memo + "\n" : "") + `・${memoContent} (${new Date().toLocaleDateString()})`;
 
-                            if (targetRowIndex !== -1 && foundRes) {
-                                const updateRange = `Sheet1!B${targetRowIndex + 1}`;
-                                await sheets.spreadsheets.values.update({
-                                    spreadsheetId: sheetId, range: updateRange, valueInputOption: 'USER_ENTERED',
-                                    requestBody: { values: [['CANCELLED']] }
-                                });
-                                toolResult = `予約(ID: ${foundRes[0]}, 日時: ${foundRes[2]} ${foundRes[3]}) をキャンセルしました。またのご利用をお待ちしております。`;
+                await supabase.from('users').update({ internal_memo: newMemo }).eq('tenant_id', tenantId).eq('user_id', targetUser.user_id);
 
-                                // 通知
-                                // ★理由がある場合は通知に含める
-                                const reasonText = args.reason ? `\n理由: ${args.reason}` : "";
-                                const staffNotifyMsg = `【自己キャンセル】\n以前の予約(ID: ${foundRes[0]})がユーザー自身によりキャンセルされました。${reasonText}`;
-                                await sendNotification(tenant.notification_webhook_url, tenantId, staffNotifyMsg);
-                            } else {
-                                toolResult = "キャンセル可能な予約が見つかりませんでした。";
-                            }
-                        }
-                        else if (tc.function.name === 'check_my_reservation') {
-                            const resp = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: 'Sheet1!A:H' });
-                            const rows = resp.data.values || [];
-                            const myRes = rows.filter(r => r[7] === userId && (r[1] === 'PENDING' || r[1] === 'CONFIRMED'));
+                await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `✅ メモを保存しました。\n対象: ${targetUser.display_name}\n内容: ${memoContent}` }] });
+                return;
+            }
 
-                            if (myRes.length > 0) {
-                                toolResult = "【あなたの現在の予約】\n" + myRes.map(r => `・${r[2]} ${r[3]} (${r[1]})`).join("\n");
-                            } else {
-                                toolResult = "現在、有効な予約はありません。";
-                            }
-                        }
+            // 7. 明日の予約一覧 (#TOMORROW)
+            if (command === '#TOMORROW') {
+                if (!user.is_staff) return;
 
-                        // Toolの実行結果メッセージを追加
-                        completionMessages.push({ role: "tool", content: toolResult, tool_call_id: toolCall.id });
+                const sheets = await getGoogleSheetsClient();
+                const sheetId = tenant.google_sheet_id;
+                if (!sheets || !sheetId) {
+                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: 'Error: Google Sheets not connected' }] });
+                    return;
+                }
+
+                const d = new Date();
+                d.setDate(d.getDate() + 1); // Add 1 day
+                const yyyy = d.getFullYear();
+                const mm = String(d.getMonth() + 1).padStart(2, '0');
+                const dd = String(d.getDate()).padStart(2, '0');
+                const targetDate = `${yyyy}/${mm}/${dd}`;
+
+                const resp = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: 'Sheet1!A:D' });
+                const rows = resp.data.values || [];
+                const tomorrowReservations = rows.filter(row => row[2] === targetDate && row[1] !== 'CANCELLED');
+
+                if (tomorrowReservations.length === 0) {
+                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `📅 明日 (${targetDate}) の予約はありません。` }] });
+                    return;
+                }
+
+                const msgLines = tomorrowReservations.map(row => `・${row[3]}~ (ID:${row[0]})`);
+                await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `📅 明日 (${targetDate}) の予約:\n\n${msgLines.join('\n')}` }] });
+                return;
+            }
+
+            // 8. 明日までの空き確認 (#VACANCY)
+            if (command === '#VACANCY') {
+                if (!user.is_staff) return;
+
+                const sheets = await getGoogleSheetsClient();
+                const sheetId = tenant.google_sheet_id;
+                if (!sheets || !sheetId) {
+                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: 'Error: Google Sheets not connected' }] });
+                    return;
+                }
+
+                const resp = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: 'Sheet1!A:D' });
+                const rows = resp.data.values || [];
+
+                // Config: 11:00 - 20:00 (Simple assumption)
+                const openHours = [11, 12, 13, 14, 15, 16, 17, 18, 19];
+
+                const checkDays = [0, 1]; // Today, Tomorrow
+                let resultMsg = "🈳 明日までの空き状況:\n(目安: 11:00-20:00)\n";
+
+                const todayBase = new Date();
+
+                for (const offset of checkDays) {
+                    const d = new Date(todayBase);
+                    d.setDate(d.getDate() + offset);
+                    const yyyy = d.getFullYear();
+                    const mm = String(d.getMonth() + 1).padStart(2, '0');
+                    const dd = String(d.getDate()).padStart(2, '0');
+                    const dateStr = `${yyyy}/${mm}/${dd}`;
+                    const label = offset === 0 ? "今日" : "明日";
+
+                    const dayRows = rows.filter(row => row[2] === dateStr && row[1] !== 'CANCELLED');
+                    const bookedTimes = dayRows.map(row => row[3]); // "14:00"
+
+                    const freeSlots = [];
+                    for (const h of openHours) {
+                        const timeStr = `${h}:00`;
+                        // Simple match: Starts with "14:"
+                        const isBooked = bookedTimes.some(t => t.startsWith(`${h}:`));
+                        if (!isBooked) freeSlots.push(timeStr);
                     }
-                    // 2回目の呼び出し時も、同様に条件分岐済みのパラメータを使用する(ただしmessagesは更新後のもの)
-                    // もし2回目以降でToolを使わせたくない場合は tools を外すが、会話の流れ上は一貫性を持たせるため、
-                    // 基本的には同じ設定で良いが、念のため再定義する。
-                    const secondParams: any = {
+
+                    if (freeSlots.length > 0) {
+                        resultMsg += `\n▼${label} (${dateStr})\n` + freeSlots.join(', ');
+                    } else {
+                        resultMsg += `\n▼${label} (${dateStr})\n🈵 満席`;
+                    }
+                }
+
+                await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: resultMsg }] });
+                return;
+            }
+        } // End of Staff Command Handler
+
+        const check = checkSensitivy(userMessage, customKeywords);
+
+        if (check.found && check.level === 'critical') {
+            await supabase.from('users').update({ is_handoff_active: true, status: 'attention_required' }).eq('tenant_id', tenantId).eq('user_id', userId);
+            await sendNotification(tenant.notification_webhook_url, tenantId, `有人切替: ${userMessage}`);
+            await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '担当者が確認します。AI応答を停止しました。' }] });
+            return;
+        }
+
+        // ★仕様4: トークン上限・通知 (80% / 95% / 100%)
+        const { data: usageData } = await supabase.from('usage_logs').select('token_usage').eq('tenant_id', tenantId);
+        const currentTotal = usageData?.reduce((s: number, l: any) => s + (l.token_usage || 0), 0) || 0;
+        const limit = tenant.monthly_token_limit;
+
+        if (limit > 0) {
+            const ratio = currentTotal / limit;
+
+            // 停止処理 (100%超)
+            if (ratio >= 1.0) {
+                await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '【システム通知】\n今月のAI利用枠の上限に達したため、応答を一時停止しています。\n再開するには追加枠の購入が必要です。' }] });
+                // 既に通知済みでなければ顧客へ通知するロジックを本来は入れる
+                return;
+            }
+
+            // 警告通知 (80% または 95% のしきい値を跨いだ時だけ通知すべきだが、簡易的に毎回ログに残すか、別途通知履歴テーブルが必要)
+            // ここでは簡易的に「管理画面Webhook」へ通知を送る (95%以上ならCritical)
+            if (ratio >= 0.95) {
+                await sendNotification(tenant.notification_webhook_url, tenantId, `⚠️ Token Usage Critical: ${(ratio * 100).toFixed(1)}% used.`);
+            } else if (ratio >= 0.80 && ratio < 0.81) { // 80%付近のみ (連投防止のため狭める)
+                await sendNotification(tenant.notification_webhook_url, tenantId, `⚠️ Token Usage Warning: ${(ratio * 100).toFixed(1)}% used.`);
+            }
+        }
+
+        const openai = new OpenAI({ apiKey: openaiApiKey });
+
+        // Embedding Model Selection based on tenant config
+        const embeddingModel = tenant.embedding_model || "text-embedding-3-small";
+        const isLargeEmbedding = embeddingModel === "text-embedding-3-large";
+
+        const embeddingRes = await openai.embeddings.create({ model: embeddingModel, input: userMessage });
+        const queryVector = embeddingRes.data[0].embedding;
+
+        // ★Update: Use Hybrid Search (Vector + Keyword)
+        try {
+            let matchedKnowledge: any[] = [];
+
+            if (isLargeEmbedding) {
+                // Call Large Model RPC (3072 dim)
+                const { data } = await supabase.rpc('match_knowledge_hybrid_large', {
+                    query_text: userMessage,
+                    query_embedding: queryVector,
+                    match_threshold: 0.3,
+                    match_count: 3,
+                    p_tenant_id: tenantId
+                });
+                matchedKnowledge = data;
+            } else {
+                // Call Standard Model RPC (1536 dim)
+                const { data } = await supabase.rpc('match_knowledge_hybrid', {
+                    query_text: userMessage,
+                    query_embedding: queryVector,
+                    match_threshold: 0.3,
+                    match_count: 3,
+                    p_tenant_id: tenantId
+                });
+                matchedKnowledge = data;
+            }
+
+            // カテゴリをバッジとして付与してAIに渡す
+            var contextText = matchedKnowledge?.length > 0 ?
+                "\n\n【参考資料】\n" + matchedKnowledge.map((k: any) => `- [${k.category || 'FAQ'}] ${k.content.substring(0, 800)}`).join("\n")
+                : "";
+        } catch (e) {
+            console.error('Hybrid search failed, falling back to simple vector:', e);
+            // Fallback for Small model only (Legacy RPC match_knowledge takes 1536 dim)
+            if (!isLargeEmbedding) {
+                const { data: matchedKnowledge } = await supabase.rpc('match_knowledge', {
+                    query_embedding: queryVector, match_threshold: 0.3, match_count: 2, p_tenant_id: tenantId
+                });
+                contextText = matchedKnowledge?.length > 0 ?
+                    "\n\n【参考資料】\n" + matchedKnowledge.map((k: any) => `- [${k.category || 'FAQ'}] ${k.content.substring(0, 500)}`).join("\n")
+                    : "";
+            } else {
+                contextText = ""; // No fallback for large model (schema mismatch)
+            }
+        }
+
+        // messages配列を any[] として定義
+        const now = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
+
+        // ★履歴取得 (直近6件 = 3ターン分)
+        const { data: historyData } = await supabase
+            .from('chat_history')
+            .select('role, content')
+            .eq('tenant_id', tenantId)
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+            .limit(20);
+
+        // 履歴は新しい順に来るので、古い順に戻す
+        const historyMessages = (historyData || []).reverse().map((h: any) => ({ role: h.role, content: h.content }));
+
+        // プランごとの追加指示
+        let planInstructions = "";
+        if (tenant.plan === 'Standard' || tenant.plan === 'Enterprise') {
+            planInstructions = `\n\n【Standardプラン動作規定】\n・予約キャンセルの依頼があった場合は、いきなりキャンセルを実行せず、必ず『check_my_reservation』ツールを呼び出してユーザーの現在の予約状況を提示し、「こちらの予約をキャンセルしてよろしいですか？」と確認をとってください。\n・さらに、「差し支えなければキャンセルの理由をお聞かせください」と丁寧に伺ってください。\n・ユーザーから明確な同意が得られた場合のみ、『cancel_reservation』を実行してください。その際、理由があればreason引数に含めてください。`;
+        } else {
+            planInstructions = `\n\n【Liteプラン動作規定】\n・予約のキャンセルや変更の依頼があった場合、あなたにはそれを実行する機能がありません。\n・その代わり、「かしこまりました。担当者に申し伝えますので、店舗からの連絡をお待ちください。」と丁寧に案内してください。\n・決して「電話してください」や「自分でやってください」と突き放すような言い方はしないでください。`;
+        }
+
+        const userMemo = user.internal_memo ? `\n\n【お客様メモ (スタッフ共有事項)】\n${user.internal_memo}\n※この情報はユーザーには見せず、接客の参考にしてください。` : "";
+
+        const completionMessages: any[] = [
+            { role: "system", content: `現在の日時は ${now} です。\n` + tenant.system_prompt + contextText + userMemo + (rawKeywords ? `\n\n【重要】現在有効な「担当者呼び出しパスワード」は『${rawKeywords}』です。ユーザーが担当者との会話を希望した場合のみ、「担当者にお繋ぎしますので『${rawKeywords}』と入力してください」と案内してください。` : "") + planInstructions },
+            ...historyMessages,
+            { role: "user", content: userMessage }
+        ];
+
+        // モデル選択
+        const selectedModel = tenant.ai_model || "gpt-4o-mini";
+        const isThinkingModel = selectedModel.includes('gpt-5.1') || selectedModel.includes('gpt-5.2');
+
+        // ★非同期推論フロー (GPT-5.1/5.2)
+        if (isThinkingModel) {
+            // 1. 即時応答 (Reply API)
+            await lineClient.replyMessage({
+                replyToken: event.replyToken,
+                messages: [{ type: 'text', text: '🧠 専門知識を元に深く考えています... 少々お待ちください。' }]
+            });
+
+            // 2. 非同期処理実行 (本来は waitUntil 等を使うが、関数内で Promise を detach する)
+            (async () => {
+                try {
+                    const completionParams: any = {
                         model: selectedModel,
                         messages: completionMessages,
                     };
+                    // Thinking models might not support tools well yet, or take too long, but we include if configured
                     if (tenant.google_sheet_id) {
-                        secondParams.tools = getTools(tenant.plan || 'Lite');
-                    }
-                    console.log(`[DEBUG] Calling OpenAI Second Pass...`);
-                    const secondResponse = await openai.chat.completions.create(secondParams);
-                    aiResponse = secondResponse.choices[0].message.content;
-
-                    // ★Fallback: AIが何も喋らなかった場合、Toolの結果をそのまま返す
-                    if (!aiResponse && toolResult) {
-                        console.log(`[DEBUG] AI response empty. Using toolResult as fallback.`);
-                        aiResponse = toolResult;
+                        completionParams.tools = getTools(tenant.plan || 'Lite');
                     }
 
-                    console.log(`[DEBUG] Second AI Response: ${aiResponse?.substring(0, 50)}...`);
+                    const completion = await openai.chat.completions.create(completionParams);
+                    const choice = completion.choices[0];
+                    let aiResponse = choice.message.content;
+
+                    // Note: Tool calls handling in async mode is complex. For now, if tool calls exist, we just execute them and push result.
+                    // Ideally recursion is needed like the sync flow.
+                    if (choice.message.tool_calls) {
+                        // ... (Tool handling logic similar to sync flow, but using Push API for output)
+                        // For simplicity in this iteration, we fallback to text if tool is used, or perform 1 hop.
+                        // Here we implement basic tool execution and response.
+                        const sheets = await getGoogleSheetsClient();
+                        const sheetId = tenant.google_sheet_id;
+                        if (sheets && sheetId) {
+                            completionMessages.push(choice.message);
+                            for (const toolCall of choice.message.tool_calls) {
+                                const tc = toolCall as any;
+                                const args = JSON.parse(tc.function.arguments);
+                                let toolResult = "";
+                                // ... (Tool logic duplicated or refactored) ...
+                                // For brevity, let's assume simple answer generation after tool use
+                                // Simplified tool logic for Async flow:
+                                if (tc.function.name === 'check_schedule') {
+                                    // ... duplicated logic ...
+                                    toolResult = "（スケジュール確認完了）"; // Placeholder
+                                } else {
+                                    toolResult = "（処理完了）";
+                                }
+                                completionMessages.push({ role: "tool", content: toolResult, tool_call_id: toolCall.id });
+                            }
+                            const secondResponse = await openai.chat.completions.create({ model: selectedModel, messages: completionMessages });
+                            aiResponse = secondResponse.choices[0].message.content;
+                        }
+                    }
+
+                    if (aiResponse) {
+                        await lineClient.pushMessage({
+                            to: userId,
+                            messages: [{ type: 'text', text: aiResponse }]
+                        });
+
+                        // Save History
+                        await supabase.from('chat_history').insert([
+                            { tenant_id: tenantId, user_id: userId, role: 'user', content: userMessage },
+                            { tenant_id: tenantId, user_id: userId, role: 'assistant', content: aiResponse }
+                        ]);
+                        await supabase.from('usage_logs').insert({
+                            tenant_id: tenantId, user_id: userId, event_id: eventId,
+                            message_type: 'text', token_usage: completion.usage?.total_tokens || 0, status: 'success_async'
+                        });
+                    }
+                } catch (e) {
+                    console.error('Async processing failed', e);
+                    await lineClient.pushMessage({ to: userId, messages: [{ type: 'text', text: '申し訳ありません。処理中にエラーが発生しました。' }] });
                 }
-            }
+            })();
 
-            console.log(`[DEBUG] Final Reply: ${aiResponse ? 'Content exists' : 'EMPTY'}`);
-            const finalContent = aiResponse || 'システムエラーが発生しました。時間をおいてお試しください。';
+            return; // End Sync Flow
+        }
 
-            await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: finalContent }] });
+        // --- 以下、通常モデル(Legacy)の同期フロー ---
 
-            // 成功時のみ履歴保存
-            if (aiResponse) {
-                await supabase.from('chat_history').insert([
-                    { tenant_id: tenantId, user_id: userId, role: 'user', content: userMessage },
-                    { tenant_id: tenantId, user_id: userId, role: 'assistant', content: aiResponse }
-                ]);
-            }
+        const completionParams: any = {
+            model: selectedModel,
+            messages: completionMessages,
+        };
 
-            await supabase.from('usage_logs').insert({
-                tenant_id: tenantId, user_id: userId, event_id: eventId,
-                message_type: 'text', token_usage: completion.usage?.total_tokens || 0, status: 'success'
-            });
+        if (tenant.google_sheet_id) {
+            completionParams.tools = getTools(tenant.plan || 'Lite');
+        }
 
-        } catch (error: any) {
-            console.error(`[${tenantId}] CRITICAL Error:`, error);
-            if (event.replyToken) {
-                try {
-                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: 'システムエラーが発生しました。時間を置いてお試しください。' }] });
-                } catch (e) { console.error('Error sending fallback message:', e); }
+        const completion = await openai.chat.completions.create(completionParams);
+
+        const choice = completion.choices[0];
+        console.log(`[DEBUG] First AI Response: Content="${choice.message.content?.substring(0, 20)}...", ToolCalls=${choice.message.tool_calls ? choice.message.tool_calls.length : 0}`);
+
+        let aiResponse = choice.message.content;
+
+        if (choice.message.tool_calls) {
+            const sheets = await getGoogleSheetsClient();
+            const sheetId = tenant.google_sheet_id;
+
+            if (sheets && sheetId) {
+                console.log(`[DEBUG] Tool execution started for ${choice.message.tool_calls.length} calls.`);
+
+                // Assistantのメッセージ（ToolCall要求）は一度だけ履歴に追加する
+                completionMessages.push(choice.message);
+
+                let toolResult = "";
+
+                for (const toolCall of choice.message.tool_calls) {
+                    const tc = toolCall as any;
+                    const args = JSON.parse(tc.function.arguments);
+                    console.log(`[DEBUG] Tool Call: ${tc.function.name}, Args=${JSON.stringify(args)}, SheetID=${sheetId}`);
+
+                    if (tc.function.name === 'check_schedule') {
+                        const resp = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: 'Sheet1!A:D' });
+                        const rows = resp.data.values || [];
+                        const targeted = rows
+                            .filter(row => row[0] === args.date)
+                            .map(row => `${row[1]} : 予約済`);
+                        toolResult = targeted.length > 0 ? "【現在の予約状況】\n" + targeted.join("\n") : "その日の予約は入っていません。";
+                    }
+                    else if (tc.function.name === 'add_reservation') {
+                        const reservationId = crypto.randomUUID().split('-')[0];
+                        const jstTime = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
+                        await sheets.spreadsheets.values.append({
+                            spreadsheetId: sheetId, range: 'Sheet1', valueInputOption: 'USER_ENTERED',
+                            requestBody: { values: [[reservationId, 'PENDING', args.date, args.time, args.name, args.details || '', jstTime, userId]] }
+                        });
+                        toolResult = `仮予約を受付けました。\n予約ID: ${reservationId}\nお店からの確定連絡をお待ちください。`;
+
+                        const staffNotifyMsg = `【新規予約依頼】\n予約ID: ${reservationId}\n日時: ${args.date} ${args.time}\nお名前: ${args.name}\n内容: ${args.details || '-'}\n\n確定する場合:\n#CONFIRM ${reservationId}\n\nキャンセルする場合 (理由なし):\n#CANCEL ${reservationId}\n\nキャンセルする場合 (理由あり):\n#CANCEL ${reservationId} 満席のため`;
+                        await sendNotification(tenant.notification_webhook_url, tenantId, staffNotifyMsg);
+
+                        const { data: staffMembers } = await supabase.from('users').select('user_id').eq('tenant_id', tenantId).eq('is_staff', true);
+                        if (staffMembers && staffMembers.length > 0) {
+                            for (const sm of staffMembers) {
+                                try {
+                                    await lineClient.pushMessage({
+                                        to: sm.user_id,
+                                        messages: [{ type: 'text', text: staffNotifyMsg }]
+                                    });
+                                } catch (e) { console.error('Staff push failed', e); }
+                            }
+                        }
+                    }
+                    else if (tc.function.name === 'cancel_reservation') {
+                        // ユーザーID一致かつ未来の予約を探す
+                        const resp = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: 'Sheet1!A:H' });
+                        const rows = resp.data.values || [];
+                        // 予約行を探す (H列=User ID, B列=Status, C列=Date)
+                        let targetRowIndex = -1;
+                        let foundRes: any = null;
+
+                        // 日付指定があればそれで、なければ直近のPENDING/CONFIRMEDを探す
+                        for (let i = 0; i < rows.length; i++) {
+                            const row = rows[i];
+                            const rUserId = row[7];
+                            const rStatus = row[1];
+                            const rDate = row[2];
+
+                            if (rUserId === userId && (rStatus === 'PENDING' || rStatus === 'CONFIRMED')) {
+                                if (args.date) {
+                                    if (rDate === args.date) { targetRowIndex = i; foundRes = row; break; }
+                                } else {
+                                    // 指定なしなら最初に見つかったもの（あるいは本来は未来で一番近いもの）
+                                    targetRowIndex = i; foundRes = row; break;
+                                }
+                            }
+                        }
+
+                        if (targetRowIndex !== -1 && foundRes) {
+                            const updateRange = `Sheet1!B${targetRowIndex + 1}`;
+                            await sheets.spreadsheets.values.update({
+                                spreadsheetId: sheetId, range: updateRange, valueInputOption: 'USER_ENTERED',
+                                requestBody: { values: [['CANCELLED']] }
+                            });
+                            toolResult = `予約(ID: ${foundRes[0]}, 日時: ${foundRes[2]} ${foundRes[3]}) をキャンセルしました。またのご利用をお待ちしております。`;
+
+                            // 通知
+                            // ★理由がある場合は通知に含める
+                            const reasonText = args.reason ? `\n理由: ${args.reason}` : "";
+                            const staffNotifyMsg = `【自己キャンセル】\n以前の予約(ID: ${foundRes[0]})がユーザー自身によりキャンセルされました。${reasonText}`;
+                            await sendNotification(tenant.notification_webhook_url, tenantId, staffNotifyMsg);
+                        } else {
+                            toolResult = "キャンセル可能な予約が見つかりませんでした。";
+                        }
+                    }
+                    else if (tc.function.name === 'check_my_reservation') {
+                        const resp = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: 'Sheet1!A:H' });
+                        const rows = resp.data.values || [];
+                        const myRes = rows.filter(r => r[7] === userId && (r[1] === 'PENDING' || r[1] === 'CONFIRMED'));
+
+                        if (myRes.length > 0) {
+                            toolResult = "【あなたの現在の予約】\n" + myRes.map(r => `・${r[2]} ${r[3]} (${r[1]})`).join("\n");
+                        } else {
+                            toolResult = "現在、有効な予約はありません。";
+                        }
+                    }
+
+                    // Toolの実行結果メッセージを追加
+                    completionMessages.push({ role: "tool", content: toolResult, tool_call_id: toolCall.id });
+                }
+                // 2回目の呼び出し時も、同様に条件分岐済みのパラメータを使用する(ただしmessagesは更新後のもの)
+                // もし2回目以降でToolを使わせたくない場合は tools を外すが、会話の流れ上は一貫性を持たせるため、
+                // 基本的には同じ設定で良いが、念のため再定義する。
+                const secondParams: any = {
+                    model: selectedModel,
+                    messages: completionMessages,
+                };
+                if (tenant.google_sheet_id) {
+                    secondParams.tools = getTools(tenant.plan || 'Lite');
+                }
+                console.log(`[DEBUG] Calling OpenAI Second Pass...`);
+                const secondResponse = await openai.chat.completions.create(secondParams);
+                aiResponse = secondResponse.choices[0].message.content;
+
+                // ★Fallback: AIが何も喋らなかった場合、Toolの結果をそのまま返す
+                if (!aiResponse && toolResult) {
+                    console.log(`[DEBUG] AI response empty. Using toolResult as fallback.`);
+                    aiResponse = toolResult;
+                }
+
+                console.log(`[DEBUG] Second AI Response: ${aiResponse?.substring(0, 50)}...`);
             }
         }
+
+        console.log(`[DEBUG] Final Reply: ${aiResponse ? 'Content exists' : 'EMPTY'}`);
+        const finalContent = aiResponse || 'システムエラーが発生しました。時間をおいてお試しください。';
+
+        await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: finalContent }] });
+
+        // 成功時のみ履歴保存
+        if (aiResponse) {
+            await supabase.from('chat_history').insert([
+                { tenant_id: tenantId, user_id: userId, role: 'user', content: userMessage },
+                { tenant_id: tenantId, user_id: userId, role: 'assistant', content: aiResponse }
+            ]);
+        }
+
+        await supabase.from('usage_logs').insert({
+            tenant_id: tenantId, user_id: userId, event_id: eventId,
+            message_type: 'text', token_usage: completion.usage?.total_tokens || 0, status: 'success'
+        });
+
+    } catch (error: any) {
+        console.error(`[${tenantId}] CRITICAL Error:`, error);
+        if (event.replyToken) {
+            try {
+                await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: 'システムエラーが発生しました。時間を置いてお試しください。' }] });
+            } catch (e) { console.error('Error sending fallback message:', e); }
+        }
     }
+}
 
 export async function POST(request: Request, { params }: { params: Promise<{ botId: string }> }) {
-        const bodyText = await request.text();
-        const signature = request.headers.get('x-line-signature') || '';
-        try {
-            const supabase = getSupabaseAdmin();
-            const { botId } = await params;
-            const { data: tenant, error } = await supabase.from('tenants').select('*').eq('tenant_id', botId).single();
-            if (error || !tenant || !tenant.is_active) return NextResponse.json({ error: "Unauthorized" }, { status: 404 });
+    const bodyText = await request.text();
+    const signature = request.headers.get('x-line-signature') || '';
+    try {
+        const supabase = getSupabaseAdmin();
+        const { botId } = await params;
+        const { data: tenant, error } = await supabase.from('tenants').select('*').eq('tenant_id', botId).single();
+        if (error || !tenant || !tenant.is_active) return NextResponse.json({ error: "Unauthorized" }, { status: 404 });
 
-            // Decrypt sensitive info
-            tenant.line_channel_access_token = decrypt(tenant.line_channel_access_token);
-            if (tenant.openai_api_key) tenant.openai_api_key = decrypt(tenant.openai_api_key);
-            if (tenant.google_sheet_id) tenant.google_sheet_id = decrypt(tenant.google_sheet_id);
+        // Decrypt sensitive info
+        tenant.line_channel_access_token = decrypt(tenant.line_channel_access_token);
+        if (tenant.openai_api_key) tenant.openai_api_key = decrypt(tenant.openai_api_key);
+        if (tenant.google_sheet_id) tenant.google_sheet_id = decrypt(tenant.google_sheet_id);
 
-            const openaiApiKey = tenant.openai_api_key || process.env.OPENAI_API_KEY || '';
-            const lineClient = new line.messagingApi.MessagingApiClient({ channelAccessToken: tenant.line_channel_access_token });
-            const json = JSON.parse(bodyText);
-            if (json.events) await Promise.all(json.events.map((e: any) => handleEvent(e, lineClient, openaiApiKey, tenant, supabase)));
-            return NextResponse.json({ message: "OK" });
-        } catch (error: any) {
-            console.error(error);
-            return NextResponse.json({ error: error.message }, { status: 500 });
-        }
+        const openaiApiKey = tenant.openai_api_key || process.env.OPENAI_API_KEY || '';
+        const lineClient = new line.messagingApi.MessagingApiClient({ channelAccessToken: tenant.line_channel_access_token });
+        const json = JSON.parse(bodyText);
+        if (json.events) await Promise.all(json.events.map((e: any) => handleEvent(e, lineClient, openaiApiKey, tenant, supabase)));
+        return NextResponse.json({ message: "OK" });
+    } catch (error: any) {
+        console.error(error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
     }
+}
 
-    export async function GET() {
-        return NextResponse.json({ status: "OK", message: "Bot Router Active" });
-    }
+export async function GET() {
+    return NextResponse.json({ status: "OK", message: "Bot Router Active" });
+}
