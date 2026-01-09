@@ -317,37 +317,75 @@ export async function importKnowledgeFromText(formData: FormData) {
                     messages: [
                         {
                             role: "system",
-                            content: `あなたはFAQ生成の専門家です。
-与えられたテキストから、ユーザーが質問しそうな内容をQ&A形式で抽出してください。
+                            content: `あなたはFAQ生成とカテゴリ分類の専門家です。
+与えられたテキストから、ユーザーが質問しそうな内容をQ&A形式で抽出し、適切なカテゴリに分類してください。
+
+カテゴリ一覧：
+- FAQ: よくある質問、一般的な疑問
+- OFFER: サービス内容、提供価値、特徴
+- PRICE: 料金、費用、支払い条件
+- PROCESS: 手順、流れ、使い方
+- POLICY: 方針、ルール、注意事項
+- CONTEXT: 背景情報、補足説明
+
+出力形式（JSON配列）：
+[
+  {"q": "質問内容", "a": "回答内容", "category": "PRICE"},
+  {"q": "質問内容", "a": "回答内容", "category": "OFFER"}
+]
 
 ルール：
-- 各Q&Aは「Q: 質問」「A: 回答」の形式で出力
-- 具体的で検索しやすい質問を作成
 - 1つのテキストから3〜10個程度のQ&Aを生成
-- 抽象的な内容でも「〇〇さんの考え方」「〇〇についての見解」などの形式でQ&A化
-- 料金、サービス内容、連絡先などは必ずQ&A化
-- Q&Aの間は空行で区切る`
+- 具体的で検索しやすい質問を作成
+- 抽象的な内容でも「〇〇についての考え方」などQ&A化
+- 料金、サービス内容、連絡先は必ずQ&A化
+- 必ず有効なJSON配列で出力（それ以外のテキストは不要）`
                         },
                         {
                             role: "user",
-                            content: `以下のテキストからQ&Aを生成してください：\n\n${textPart}`
+                            content: `以下のテキストからQ&Aを生成し、カテゴリ分類してください：\n\n${textPart}`
                         }
                     ],
                     temperature: 0.3,
-                    max_tokens: 2000
+                    max_tokens: 2500,
+                    response_format: { type: "json_object" }
                 });
 
-                const qaText = qaResponse.choices[0]?.message?.content || "";
+                const qaRaw = qaResponse.choices[0]?.message?.content || "{}";
 
-                // Q&Aをパースして個別チャンクに
-                const qaBlocks = qaText.split(/\n\n+/).filter(b => b.trim());
+                try {
+                    // JSONパース
+                    let qaData = JSON.parse(qaRaw);
 
-                for (const block of qaBlocks) {
-                    if (block.includes("Q:") && block.includes("A:")) {
-                        processedChunks.push({
-                            content: block.trim(),
-                            category: chunk.category || 'FAQ'
-                        });
+                    // 配列でない場合は配列プロパティを探す
+                    if (!Array.isArray(qaData)) {
+                        qaData = qaData.qa || qaData.items || qaData.questions || qaData.data || [];
+                    }
+
+                    for (const item of qaData) {
+                        if (item.q && item.a) {
+                            const validCategories = ['FAQ', 'OFFER', 'PRICE', 'PROCESS', 'POLICY', 'CONTEXT'];
+                            const category = validCategories.includes(item.category?.toUpperCase())
+                                ? item.category.toUpperCase()
+                                : 'FAQ';
+
+                            processedChunks.push({
+                                content: `Q: ${item.q}\nA: ${item.a}`,
+                                category: category
+                            });
+                        }
+                    }
+                } catch (parseError) {
+                    console.error('[JSON Parse Error]', parseError);
+                    // フォールバック: テキストとして処理
+                    const qaBlocks = qaRaw.split(/\n\n+/).filter(b => b.trim());
+                    for (const block of qaBlocks) {
+                        if (block.includes("Q:") && block.includes("A:")) {
+                            processedChunks.push({
+                                content: block.trim(),
+                                category: 'FAQ'
+                            });
+                        }
                     }
                 }
             }
