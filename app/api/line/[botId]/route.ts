@@ -860,6 +860,8 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
             }
         }
     }
+    }
+}
 }
 
 export async function POST(request: Request, { params }: { params: Promise<{ botId: string }> }) {
