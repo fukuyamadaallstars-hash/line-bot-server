@@ -253,7 +253,10 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
             }
             // 3. 今日の予約確認 (#TODAY, #SCHEDULE)
             if (command === '#TODAY' || command === '#SCHEDULE') {
-                if (!user.is_staff) return;
+                if (!user.is_staff) {
+                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '⛔️ 権限がありません。\n先に #STAFF <コード> で登録してください。' }] });
+                    return;
+                }
 
                 const sheets = await getGoogleSheetsClient();
                 const sheetId = tenant.google_sheet_id;
@@ -294,7 +297,10 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
 
             // 4. 一斉配信 (#BROADCAST <MESSAGE>)
             if (command === '#BROADCAST') {
-                if (!user.is_staff) return;
+                if (!user.is_staff) {
+                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '⛔️ 権限がありません。' }] });
+                    return;
+                }
                 const broadcastMsg = args.slice(1).join(' ');
                 if (!broadcastMsg) {
                     await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '使い方: #BROADCAST <メッセージ内容>' }] });
@@ -323,7 +329,10 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
 
             // 5. 予約枠ブロック・代理登録 (#BLOCK <YYYY/MM/DD> <HH:MM> <MEMO>)
             if (command === '#BLOCK') {
-                if (!user.is_staff) return;
+                if (!user.is_staff) {
+                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '⛔️ 権限がありません。' }] });
+                    return;
+                }
                 const bDate = args[1]; // YYYY/MM/DD
                 const bTime = args[2]; // HH:MM
                 const bMemo = args.slice(3).join(' ') || '店舗都合';
@@ -363,7 +372,10 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
 
             // 6. 顧客メモ (#MEMO <お名前部分一致> <内容>)
             if (command === '#MEMO') {
-                if (!user.is_staff) return;
+                if (!user.is_staff) {
+                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '⛔️ 権限がありません。' }] });
+                    return;
+                }
                 const targetName = args[1];
                 const memoContent = args.slice(2).join(' ');
 
@@ -401,7 +413,10 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
 
             // 7. 明日の予約一覧 (#TOMORROW)
             if (command === '#TOMORROW') {
-                if (!user.is_staff) return;
+                if (!user.is_staff) {
+                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '⛔️ 権限がありません。' }] });
+                    return;
+                }
 
                 const sheets = await getGoogleSheetsClient();
                 const sheetId = tenant.google_sheet_id;
@@ -433,7 +448,10 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
 
             // 8. 明日までの空き確認 (#VACANCY)
             if (command === '#VACANCY') {
-                if (!user.is_staff) return;
+                if (!user.is_staff) {
+                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '⛔️ 権限がありません。' }] });
+                    return;
+                }
 
                 const sheets = await getGoogleSheetsClient();
                 const sheetId = tenant.google_sheet_id;
