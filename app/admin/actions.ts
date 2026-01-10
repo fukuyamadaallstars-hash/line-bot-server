@@ -139,6 +139,55 @@ export async function quickAddToken(formData: FormData) {
     revalidatePath('/admin');
 }
 
+// ★テナント停止/再開
+export async function toggleTenantActive(formData: FormData) {
+    await verifyAdmin();
+    const tenant_id = formData.get('tenant_id') as string;
+    const action = formData.get('action') as string; // 'pause' or 'resume'
+
+    const is_active = action === 'resume';
+
+    const { error } = await supabase.from('tenants').update({ is_active }).eq('tenant_id', tenant_id);
+    if (error) throw new Error('ステータス変更エラー');
+
+    revalidatePath('/admin');
+}
+
+// ★新規テナント作成
+export async function createTenant(formData: FormData) {
+    await verifyAdmin();
+    const tenant_id = formData.get('tenant_id') as string;
+    const display_name = formData.get('display_name') as string;
+    const plan = formData.get('plan') as string || 'Lite';
+
+    if (!tenant_id || !display_name) {
+        throw new Error('テナントIDと表示名は必須です');
+    }
+
+    // 既存チェック
+    const { data: existing } = await supabase.from('tenants').select('tenant_id').eq('tenant_id', tenant_id).single();
+    if (existing) throw new Error('このテナントIDは既に存在します');
+
+    // デフォルト設定で作成
+    const defaultPrompt = `あなたは${display_name}のAIアシスタントです。お客様からの問い合わせに丁寧に対応してください。`;
+
+    const { error } = await supabase.from('tenants').insert({
+        tenant_id,
+        display_name,
+        plan,
+        is_active: false, // 初期設定完了まで無効
+        monthly_token_limit: 3000000, // デフォルト300万トークン
+        system_prompt: defaultPrompt,
+        ai_model: 'gpt-4o-mini',
+        embedding_model: 'text-embedding-3-small',
+        created_at: new Date().toISOString(),
+    });
+
+    if (error) throw new Error('テナント作成エラー: ' + error.message);
+
+    revalidatePath('/admin');
+}
+
 export async function addKnowledge(formData: FormData) {
     await verifyAdmin();
     const tenant_id = formData.get('tenant_id') as string;

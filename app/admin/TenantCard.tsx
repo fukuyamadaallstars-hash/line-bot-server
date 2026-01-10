@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { updateTenant, addKnowledge, deleteKnowledge, deleteAllKnowledge, resumeAi, quickAddToken, addTokenPurchase, createInvoiceStub, importKnowledgeFromText, importKnowledgeFromFile, reEmbedAllKnowledge } from './actions';
+import { updateTenant, addKnowledge, deleteKnowledge, deleteAllKnowledge, resumeAi, quickAddToken, addTokenPurchase, createInvoiceStub, importKnowledgeFromText, importKnowledgeFromFile, reEmbedAllKnowledge, toggleTenantActive, createTenant } from './actions';
 
 // PDF.js を動的に読み込むためのグローバル宣言
 declare global {
@@ -88,7 +88,7 @@ export default function TenantCard({ tenant }: { tenant: any }) {
     };
 
     return (
-        <div className="bot-card" style={{ transition: 'all 0.3s ease' }}>
+        <div className="bot-card" style={{ transition: 'all 0.3s ease', opacity: tenant.is_active ? 1 : 0.6 }}>
             {/* ヘッダーエリア（常に表示） */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                 <div>
@@ -119,6 +119,31 @@ export default function TenantCard({ tenant }: { tenant: any }) {
                 </div>
             </div>
 
+            {/* トークン消費率プログレスバー */}
+            {(() => {
+                const limit = tenant.monthly_token_limit || 1;
+                const used = tenant.stats?.totalTokens || 0;
+                const ratio = Math.min(used / limit, 1);
+                const percent = (ratio * 100).toFixed(1);
+                const barColor = ratio >= 0.95 ? '#ef4444' : ratio >= 0.80 ? '#f59e0b' : '#22c55e';
+
+                return (
+                    <div style={{ marginBottom: '12px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#64748b', marginBottom: '4px' }}>
+                            <span>Token: {(used / 1000).toFixed(0)}k / {(limit / 1000).toFixed(0)}k</span>
+                            <span style={{ color: barColor, fontWeight: ratio >= 0.80 ? 'bold' : 'normal' }}>
+                                {percent}%
+                                {ratio >= 0.95 && ' ⚠️危険'}
+                                {ratio >= 0.80 && ratio < 0.95 && ' ⚠️警告'}
+                            </span>
+                        </div>
+                        <div style={{ background: '#e2e8f0', borderRadius: '4px', height: '8px', overflow: 'hidden' }}>
+                            <div style={{ background: barColor, width: `${percent}%`, height: '100%', transition: 'width 0.3s ease' }} />
+                        </div>
+                    </div>
+                );
+            })()}
+
             {/* 統計エリア（常に表示） */}
             <div className="stats-row" style={{ marginBottom: isOpen ? '24px' : '0' }}>
                 <div className="stat-box">
@@ -126,8 +151,8 @@ export default function TenantCard({ tenant }: { tenant: any }) {
                     <span className="stat-value">{tenant.stats.messageCount}</span>
                 </div>
                 <div className="stat-box">
-                    <span className="stat-label">Token消費</span>
-                    <span className="stat-value">{(tenant.stats.totalTokens / 1000).toFixed(1)}k</span>
+                    <span className="stat-label">プラン</span>
+                    <span className="stat-value" style={{ fontSize: '0.9rem' }}>{tenant.plan || 'Lite'}</span>
                 </div>
                 <div className="stat-box" style={{ background: tenant.handoffUsers.length > 0 ? '#fee2e2' : '#f1f5f9' }}>
                     <span className="stat-label" style={{ color: tenant.handoffUsers.length > 0 ? '#ef4444' : '#64748b' }}>有人対応</span>
@@ -152,6 +177,48 @@ export default function TenantCard({ tenant }: { tenant: any }) {
                     </div>
                 </div>
             )}
+
+            {/* クイック操作ボタン */}
+            <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap' }}>
+                {tenant.is_active ? (
+                    <form action={toggleTenantActive}>
+                        <input type="hidden" name="tenant_id" value={tenant.tenant_id} />
+                        <input type="hidden" name="action" value="pause" />
+                        <button type="submit" style={{ padding: '4px 12px', fontSize: '0.75rem', border: '1px solid #f59e0b', borderRadius: '4px', background: '#fffbeb', color: '#b45309', cursor: 'pointer' }}>
+                            ⏸️ 停止
+                        </button>
+                    </form>
+                ) : (
+                    <form action={toggleTenantActive}>
+                        <input type="hidden" name="tenant_id" value={tenant.tenant_id} />
+                        <input type="hidden" name="action" value="resume" />
+                        <button type="submit" style={{ padding: '4px 12px', fontSize: '0.75rem', border: '1px solid #22c55e', borderRadius: '4px', background: '#f0fdf4', color: '#16a34a', cursor: 'pointer' }}>
+                            ▶️ 再開
+                        </button>
+                    </form>
+                )}
+
+                {/* 次回請求日 */}
+                {tenant.contract_start_date && (
+                    <div style={{ fontSize: '0.75rem', color: '#64748b', display: 'flex', alignItems: 'center', marginLeft: 'auto' }}>
+                        📅 次回請求: {(() => {
+                            const start = new Date(tenant.contract_start_date);
+                            const cycleDay = tenant.billing_cycle_day || start.getDate();
+                            const now = new Date();
+                            let nextBilling = new Date(now.getFullYear(), now.getMonth(), cycleDay);
+                            if (nextBilling <= now) {
+                                nextBilling = new Date(now.getFullYear(), now.getMonth() + 1, cycleDay);
+                            }
+                            const daysUntil = Math.ceil((nextBilling.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+                            return (
+                                <span style={{ marginLeft: '4px', color: daysUntil <= 7 ? '#ef4444' : '#64748b', fontWeight: daysUntil <= 7 ? 'bold' : 'normal' }}>
+                                    {nextBilling.toLocaleDateString('ja-JP')} {daysUntil <= 7 && `(${daysUntil}日後)`}
+                                </span>
+                            );
+                        })()}
+                    </div>
+                )}
+            </div>
 
             {/* 展開エリア */}
             {isOpen && (
