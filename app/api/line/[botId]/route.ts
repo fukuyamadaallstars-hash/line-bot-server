@@ -203,7 +203,7 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
 
                 const resId = arg1;
                 const sheets = await getGoogleSheetsClient();
-                const sheetId = tenant.google_sheet_id;
+                const sheetId = decrypt(tenant.google_sheet_id);
                 if (sheets && sheetId && resId) {
                     const resp = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: 'Sheet1!A:H' }); // A:Hまで拡張(H列にuserId)
                     const rows = resp.data.values || [];
@@ -259,7 +259,7 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
                 }
 
                 const sheets = await getGoogleSheetsClient();
-                const sheetId = tenant.google_sheet_id;
+                const sheetId = decrypt(tenant.google_sheet_id);
                 if (!sheets || !sheetId) {
                     await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: 'Error: Google Sheets not connected' }] });
                     return;
@@ -343,7 +343,7 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
                 }
 
                 const sheets = await getGoogleSheetsClient();
-                const sheetId = tenant.google_sheet_id;
+                const sheetId = decrypt(tenant.google_sheet_id);
                 if (!sheets || !sheetId) {
                     await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: 'Error: Google Sheets not connected' }] });
                     return;
@@ -419,7 +419,7 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
                 }
 
                 const sheets = await getGoogleSheetsClient();
-                const sheetId = tenant.google_sheet_id;
+                const sheetId = decrypt(tenant.google_sheet_id);
                 if (!sheets || !sheetId) {
                     await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: 'Error: Google Sheets not connected' }] });
                     return;
@@ -454,7 +454,7 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
                 }
 
                 const sheets = await getGoogleSheetsClient();
-                const sheetId = tenant.google_sheet_id;
+                const sheetId = decrypt(tenant.google_sheet_id);
                 if (!sheets || !sheetId) {
                     await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: 'Error: Google Sheets not connected' }] });
                     return;
@@ -656,7 +656,7 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
                         // For simplicity in this iteration, we fallback to text if tool is used, or perform 1 hop.
                         // Here we implement basic tool execution and response.
                         const sheets = await getGoogleSheetsClient();
-                        const sheetId = tenant.google_sheet_id;
+                        const sheetId = decrypt(tenant.google_sheet_id);
                         if (sheets && sheetId) {
                             completionMessages.push(choice.message);
                             for (const toolCall of choice.message.tool_calls) {
@@ -724,7 +724,7 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
 
         if (choice.message.tool_calls) {
             const sheets = await getGoogleSheetsClient();
-            const sheetId = tenant.google_sheet_id;
+            const sheetId = decrypt(tenant.google_sheet_id);
 
             if (sheets && sheetId) {
                 console.log(`[DEBUG] Tool execution started for ${choice.message.tool_calls.length} calls.`);
