@@ -737,12 +737,25 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
                     console.log(`[DEBUG] Tool Call: ${tc.function.name}, Args=${JSON.stringify(args)}, SheetID=${sheetId}`);
 
                     if (tc.function.name === 'check_schedule') {
-                        const resp = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: 'Sheet1!A:D' });
+                        const resp = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: 'Sheet1!A:H' });
                         const rows = resp.data.values || [];
-                        const targeted = rows
-                            .filter(row => row[0] === args.date)
-                            .map(row => `${row[1]} : 予約済`);
-                        toolResult = targeted.length > 0 ? "【現在の予約状況】\n" + targeted.join("\n") : "その日の予約は入っていません。";
+                        const targeted = rows.filter(row => row[2] === args.date); // C列=日付
+
+                        if (user.is_staff) {
+                            // スタッフには詳細を表示
+                            const details = targeted.map(row => `${row[3]} ${row[4] || '予約'} (${row[1]})`); // 時間, 名前, ステータス
+                            toolResult = targeted.length > 0
+                                ? `【${args.date}の予約状況】\n` + details.join('\n')
+                                : `${args.date}の予約は入っていません。`;
+                        } else {
+                            // 一般ユーザーには空き/埋まりのみ（個人情報を守る）
+                            const bookedTimes = targeted.map(row => row[3]); // D列=時間
+                            if (targeted.length > 0) {
+                                toolResult = `${args.date}は、${bookedTimes.join('、')}の時間帯に予約が入っています。\n他の時間帯は空いている可能性があります。詳細はお問い合わせください。`;
+                            } else {
+                                toolResult = `${args.date}は現在予約が入っていないようです。ご希望の時間をお知らせください。`;
+                            }
+                        }
                     }
                     else if (tc.function.name === 'add_reservation') {
                         const reservationId = crypto.randomUUID().split('-')[0];
