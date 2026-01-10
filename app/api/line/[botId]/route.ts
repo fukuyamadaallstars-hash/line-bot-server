@@ -121,11 +121,13 @@ const availableTools: Record<string, any> = {
 };
 
 function getTools(plan: string = 'Lite') {
-    const base = [availableTools.check_schedule, availableTools.add_reservation];
-    if (plan === 'Standard' || plan === 'Enterprise') {
-        return [...base, availableTools.cancel_reservation, availableTools.check_my_reservation];
-    }
-    return base;
+    // 全プランで全機能を開放
+    return [
+        availableTools.check_schedule,
+        availableTools.add_reservation,
+        availableTools.cancel_reservation,
+        availableTools.check_my_reservation
+    ];
 }
 
 async function handleEvent(event: any, lineClient: any, openaiApiKey: string, tenant: any, supabase: any) {
@@ -605,13 +607,8 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
         // 履歴は新しい順に来るので、古い順に戻す
         const historyMessages = (historyData || []).reverse().map((h: any) => ({ role: h.role, content: h.content }));
 
-        // プランごとの追加指示
-        let planInstructions = "";
-        if (tenant.plan === 'Standard' || tenant.plan === 'Enterprise') {
-            planInstructions = `\n\n【Standardプラン動作規定】\n・予約キャンセルの依頼があった場合は、いきなりキャンセルを実行せず、必ず『check_my_reservation』ツールを呼び出してユーザーの現在の予約状況を提示し、「こちらの予約をキャンセルしてよろしいですか？」と確認をとってください。\n・さらに、「差し支えなければキャンセルの理由をお聞かせください」と丁寧に伺ってください。\n・ユーザーから明確な同意が得られた場合のみ、『cancel_reservation』を実行してください。その際、理由があればreason引数に含めてください。`;
-        } else {
-            planInstructions = `\n\n【Liteプラン動作規定】\n・予約のキャンセルや変更の依頼があった場合、あなたにはそれを実行する機能がありません。\n・その代わり、「かしこまりました。担当者に申し伝えますので、店舗からの連絡をお待ちください。」と丁寧に案内してください。\n・決して「電話してください」や「自分でやってください」と突き放すような言い方はしないでください。`;
-        }
+        // プランごとの追加指示（全プランで統一）
+        const planInstructions = `\n\n【予約キャンセル動作規定】\n・予約キャンセルの依頼があった場合は、いきなりキャンセルを実行せず、必ず『check_my_reservation』ツールを呼び出してユーザーの現在の予約状況を提示し、「こちらの予約をキャンセルしてよろしいですか？」と確認をとってください。\n・さらに、「差し支えなければキャンセルの理由をお聞かせください」と丁寧に伺ってください。\n・ユーザーから明確な同意が得られた場合のみ、『cancel_reservation』を実行してください。その際、理由があればreason引数に含めてください。`;
 
         const userMemo = user.internal_memo ? `\n\n【お客様メモ (スタッフ共有事項)】\n${user.internal_memo}\n※この情報はユーザーには見せず、接客の参考にしてください。` : "";
 
