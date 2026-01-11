@@ -1,16 +1,43 @@
 'use client';
 
 import { useState } from 'react';
-import { loginTenant } from '../actions';
+import { useRouter } from 'next/navigation';
 
 export default function PortalLogin() {
     const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
+    const router = useRouter();
 
-    async function handleSubmit(formData: FormData) {
+    async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+        e.preventDefault();
+        setError('');
+        setLoading(true);
+
+        const formData = new FormData(e.currentTarget);
+        const tenant_id = formData.get('tenant_id') as string;
+        const password = formData.get('password') as string;
+
         try {
-            await loginTenant(formData);
+            const res = await fetch('/api/portal/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tenant_id, password }),
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                setError(data.error || 'ログインに失敗しました');
+                setLoading(false);
+                return;
+            }
+
+            // ログイン成功 - ダッシュボードへ
+            router.push('/portal/dashboard');
+            router.refresh();
         } catch (e: any) {
-            setError(e.message);
+            setError('ネットワークエラーが発生しました');
+            setLoading(false);
         }
     }
 
@@ -37,7 +64,7 @@ export default function PortalLogin() {
                     </div>
                 )}
 
-                <form action={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                     <div>
                         <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 'bold', color: '#475569', marginBottom: '8px' }}>
                             Tenant ID (Bot ID)
@@ -45,7 +72,7 @@ export default function PortalLogin() {
                         <input
                             name="tenant_id"
                             required
-                            placeholder="Uxxxxxxxx..."
+                            placeholder="johny"
                             style={{
                                 width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1',
                                 fontSize: '1rem'
@@ -69,13 +96,14 @@ export default function PortalLogin() {
                     </div>
                     <button
                         type="submit"
+                        disabled={loading}
                         style={{
                             marginTop: '8px', padding: '12px', borderRadius: '8px', border: 'none',
-                            background: '#0ea5e9', color: 'white', fontWeight: 'bold', fontSize: '1rem',
-                            cursor: 'pointer', boxShadow: '0 2px 8px rgba(14, 165, 233, 0.3)'
+                            background: loading ? '#94a3b8' : '#0ea5e9', color: 'white', fontWeight: 'bold', fontSize: '1rem',
+                            cursor: loading ? 'not-allowed' : 'pointer', boxShadow: '0 2px 8px rgba(14, 165, 233, 0.3)'
                         }}
                     >
-                        Login
+                        {loading ? 'ログイン中...' : 'Login'}
                     </button>
                     <p style={{ textAlign: 'center', fontSize: '0.8rem', color: '#94a3b8', marginTop: '16px' }}>
                         IDが不明な場合は管理者にお問い合わせください
