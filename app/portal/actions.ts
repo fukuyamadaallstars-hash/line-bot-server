@@ -9,6 +9,7 @@ import { revalidatePath } from 'next/cache';
 // const pdf = require('pdf-parse'); // Disabled due to build issues
 import mammoth from 'mammoth';
 import Papa from 'papaparse';
+import { encrypt } from '@/lib/crypto';
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -125,6 +126,43 @@ export async function updateSystemPrompt(formData: FormData) {
         .eq('tenant_id', tenant_id);
 
     if (error) throw new Error('更新エラー');
+    revalidatePath('/portal/dashboard');
+}
+
+// ★API設定（顧客が自分でトークンを入力）
+export async function updateApiSettings(formData: FormData) {
+    const tenant_id = await verifyTenant();
+
+    const updates: any = {};
+
+    // LINE Channel Access Token
+    const accessToken = formData.get('line_channel_access_token') as string;
+    if (accessToken && accessToken.trim()) {
+        updates.line_channel_access_token = encrypt(accessToken.trim());
+    }
+
+    // LINE Channel Secret
+    const channelSecret = formData.get('line_channel_secret') as string;
+    if (channelSecret && channelSecret.trim()) {
+        updates.line_channel_secret = encrypt(channelSecret.trim());
+    }
+
+    // Google Sheet ID
+    const sheetId = formData.get('google_sheet_id') as string;
+    if (sheetId && sheetId.trim()) {
+        updates.google_sheet_id = encrypt(sheetId.trim());
+    }
+
+    if (Object.keys(updates).length === 0) {
+        throw new Error('更新するデータがありません');
+    }
+
+    const { error } = await supabase
+        .from('tenants')
+        .update(updates)
+        .eq('tenant_id', tenant_id);
+
+    if (error) throw new Error('保存エラー: ' + error.message);
     revalidatePath('/portal/dashboard');
 }
 

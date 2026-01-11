@@ -1,11 +1,20 @@
 'use client';
 
 import { useState } from 'react';
-import { updateSystemPrompt, addKnowledge, deleteKnowledge, importKnowledgeFromText, importKnowledgeFromFile, logoutTenant } from '../actions';
+import { updateSystemPrompt, addKnowledge, deleteKnowledge, importKnowledgeFromText, importKnowledgeFromFile, logoutTenant, updateApiSettings } from '../actions';
 
 export default function DashboardClient({ tenant }: { tenant: any }) {
-    const [activeTab, setActiveTab] = useState<'prompt' | 'knowledge'>('prompt');
+    const [activeTab, setActiveTab] = useState<'api' | 'prompt' | 'knowledge'>('api');
     const [kbFilter, setKbFilter] = useState('ALL');
+
+    // 権限チェック
+    const canEditPrompt = tenant.portal_allow_prompt_edit === true;
+    const canEditKnowledge = tenant.portal_allow_knowledge_edit === true;
+
+    // トークン設定状態のチェック（暗号化されていれば設定済み）
+    const hasAccessToken = !!tenant.line_channel_access_token;
+    const hasChannelSecret = !!tenant.line_channel_secret;
+    const hasSheetId = !!tenant.google_sheet_id;
 
     return (
         <div style={{ minHeight: '100vh', background: '#f8fafc', fontFamily: '"Inter", sans-serif' }}>
@@ -32,34 +41,158 @@ export default function DashboardClient({ tenant }: { tenant: any }) {
 
                 {/* Tabs */}
                 <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                    {/* API設定タブ（常に表示） */}
                     <button
-                        onClick={() => setActiveTab('prompt')}
+                        onClick={() => setActiveTab('api')}
                         style={{
                             padding: '10px 20px', borderRadius: '8px 8px 0 0', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.9rem',
-                            background: activeTab === 'prompt' ? 'white' : 'transparent',
-                            color: activeTab === 'prompt' ? '#0f172a' : '#64748b',
-                            boxShadow: activeTab === 'prompt' ? '0 -2px 10px rgba(0,0,0,0.02)' : 'none'
+                            background: activeTab === 'api' ? 'white' : 'transparent',
+                            color: activeTab === 'api' ? '#0f172a' : '#64748b',
+                            boxShadow: activeTab === 'api' ? '0 -2px 10px rgba(0,0,0,0.02)' : 'none'
                         }}
                     >
-                        🤖 AI Personality (Prompt)
+                        🔑 API設定
                     </button>
-                    <button
-                        onClick={() => setActiveTab('knowledge')}
-                        style={{
-                            padding: '10px 20px', borderRadius: '8px 8px 0 0', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.9rem',
-                            background: activeTab === 'knowledge' ? 'white' : 'transparent',
-                            color: activeTab === 'knowledge' ? '#0f172a' : '#64748b',
-                            boxShadow: activeTab === 'knowledge' ? '0 -2px 10px rgba(0,0,0,0.02)' : 'none'
-                        }}
-                    >
-                        📚 Knowledge Base
-                    </button>
+                    {/* プロンプト編集タブ（権限がある場合のみ） */}
+                    {canEditPrompt && (
+                        <button
+                            onClick={() => setActiveTab('prompt')}
+                            style={{
+                                padding: '10px 20px', borderRadius: '8px 8px 0 0', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.9rem',
+                                background: activeTab === 'prompt' ? 'white' : 'transparent',
+                                color: activeTab === 'prompt' ? '#0f172a' : '#64748b',
+                                boxShadow: activeTab === 'prompt' ? '0 -2px 10px rgba(0,0,0,0.02)' : 'none'
+                            }}
+                        >
+                            🤖 AI Personality
+                        </button>
+                    )}
+                    {/* ナレッジ編集タブ（権限がある場合のみ） */}
+                    {canEditKnowledge && (
+                        <button
+                            onClick={() => setActiveTab('knowledge')}
+                            style={{
+                                padding: '10px 20px', borderRadius: '8px 8px 0 0', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.9rem',
+                                background: activeTab === 'knowledge' ? 'white' : 'transparent',
+                                color: activeTab === 'knowledge' ? '#0f172a' : '#64748b',
+                                boxShadow: activeTab === 'knowledge' ? '0 -2px 10px rgba(0,0,0,0.02)' : 'none'
+                            }}
+                        >
+                            📚 Knowledge Base
+                        </button>
+                    )}
                 </div>
 
                 <div style={{ background: 'white', borderRadius: '0 8px 8px 8px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', padding: '24px', minHeight: '600px' }}>
 
+                    {/* API設定タブ */}
+                    {activeTab === 'api' && (
+                        <div className="api-section">
+                            <h2 style={{ fontSize: '1.2rem', marginBottom: '16px', color: '#334155' }}>API接続設定</h2>
+                            <p style={{ fontSize: '0.9rem', color: '#64748b', marginBottom: '24px' }}>
+                                LINE Developers ConsoleからChannel Access TokenとChannel Secretを取得し、ここに入力してください。<br />
+                                入力した情報は暗号化して安全に保存されます。
+                            </p>
+
+                            {/* 現在の設定状態 */}
+                            <div style={{ display: 'flex', gap: '12px', marginBottom: '24px', flexWrap: 'wrap' }}>
+                                <div style={{ padding: '12px 16px', borderRadius: '8px', background: hasAccessToken ? '#f0fdf4' : '#fef2f2', border: `1px solid ${hasAccessToken ? '#bbf7d0' : '#fecaca'}` }}>
+                                    <span style={{ fontSize: '0.8rem', color: hasAccessToken ? '#16a34a' : '#dc2626' }}>
+                                        {hasAccessToken ? '✅' : '❌'} Channel Access Token
+                                    </span>
+                                </div>
+                                <div style={{ padding: '12px 16px', borderRadius: '8px', background: hasChannelSecret ? '#f0fdf4' : '#fef2f2', border: `1px solid ${hasChannelSecret ? '#bbf7d0' : '#fecaca'}` }}>
+                                    <span style={{ fontSize: '0.8rem', color: hasChannelSecret ? '#16a34a' : '#dc2626' }}>
+                                        {hasChannelSecret ? '✅' : '❌'} Channel Secret
+                                    </span>
+                                </div>
+                                <div style={{ padding: '12px 16px', borderRadius: '8px', background: hasSheetId ? '#f0fdf4' : '#f8fafc', border: `1px solid ${hasSheetId ? '#bbf7d0' : '#e2e8f0'}` }}>
+                                    <span style={{ fontSize: '0.8rem', color: hasSheetId ? '#16a34a' : '#64748b' }}>
+                                        {hasSheetId ? '✅' : '⏸️'} Google Sheet ID {!hasSheetId && '(任意)'}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <form action={updateApiSettings}>
+                                <div style={{ display: 'grid', gap: '20px' }}>
+                                    <div>
+                                        <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.9rem', fontWeight: 'bold', color: '#334155' }}>
+                                            LINE Channel Access Token
+                                        </label>
+                                        <input
+                                            type="password"
+                                            name="line_channel_access_token"
+                                            placeholder={hasAccessToken ? '（設定済み - 変更する場合のみ入力）' : 'Channel Access Tokenを入力'}
+                                            style={{
+                                                width: '100%', padding: '12px 16px', borderRadius: '8px',
+                                                border: '1px solid #e2e8f0', fontSize: '0.95rem',
+                                                fontFamily: 'monospace'
+                                            }}
+                                        />
+                                        <p style={{ margin: '4px 0 0 0', fontSize: '0.75rem', color: '#94a3b8' }}>
+                                            LINE Developers Console → チャネル設定 → Messaging API設定 から取得
+                                        </p>
+                                    </div>
+
+                                    <div>
+                                        <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.9rem', fontWeight: 'bold', color: '#334155' }}>
+                                            LINE Channel Secret
+                                        </label>
+                                        <input
+                                            type="password"
+                                            name="line_channel_secret"
+                                            placeholder={hasChannelSecret ? '（設定済み - 変更する場合のみ入力）' : 'Channel Secretを入力'}
+                                            style={{
+                                                width: '100%', padding: '12px 16px', borderRadius: '8px',
+                                                border: '1px solid #e2e8f0', fontSize: '0.95rem',
+                                                fontFamily: 'monospace'
+                                            }}
+                                        />
+                                        <p style={{ margin: '4px 0 0 0', fontSize: '0.75rem', color: '#94a3b8' }}>
+                                            LINE Developers Console → チャネル基本設定 → チャネルシークレット
+                                        </p>
+                                    </div>
+
+                                    <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '20px' }}>
+                                        <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.9rem', fontWeight: 'bold', color: '#334155' }}>
+                                            Google Sheet ID（予約機能を使う場合のみ）
+                                        </label>
+                                        <input
+                                            type="text"
+                                            name="google_sheet_id"
+                                            placeholder={hasSheetId ? '（設定済み - 変更する場合のみ入力）' : 'Google SpreadsheetのIDを入力（任意）'}
+                                            style={{
+                                                width: '100%', padding: '12px 16px', borderRadius: '8px',
+                                                border: '1px solid #e2e8f0', fontSize: '0.95rem',
+                                                fontFamily: 'monospace'
+                                            }}
+                                        />
+                                        <p style={{ margin: '4px 0 0 0', fontSize: '0.75rem', color: '#94a3b8' }}>
+                                            SpreadsheetのURL内 https://docs.google.com/spreadsheets/d/<strong>[この部分]</strong>/edit
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'flex-end' }}>
+                                    <button type="submit" style={{ background: '#2563eb', color: 'white', border: 'none', padding: '12px 32px', borderRadius: '8px', fontSize: '1rem', cursor: 'pointer', fontWeight: 'bold' }}>
+                                        🔒 暗号化して保存
+                                    </button>
+                                </div>
+                            </form>
+
+                            <div style={{ marginTop: '32px', padding: '16px', background: '#fffbeb', borderRadius: '8px', border: '1px solid #fcd34d' }}>
+                                <h4 style={{ margin: '0 0 8px 0', fontSize: '0.9rem', color: '#b45309' }}>⚠️ 重要な注意事項</h4>
+                                <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '0.85rem', color: '#92400e' }}>
+                                    <li>入力した情報は暗号化されてサーバーに保存されます</li>
+                                    <li>一度保存した後は画面に表示されません（セキュリティのため）</li>
+                                    <li>変更する場合は新しい値を入力して再度保存してください</li>
+                                </ul>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Prompt Tab */}
-                    {activeTab === 'prompt' && (
+                    {activeTab === 'prompt' && canEditPrompt && (
                         <div className="prompt-section">
                             <h2 style={{ fontSize: '1.2rem', marginBottom: '16px', color: '#334155' }}>AI人格・指示設定</h2>
                             <p style={{ fontSize: '0.9rem', color: '#64748b', marginBottom: '16px' }}>
@@ -86,7 +219,7 @@ export default function DashboardClient({ tenant }: { tenant: any }) {
                     )}
 
                     {/* Knowledge Tab */}
-                    {activeTab === 'knowledge' && (
+                    {activeTab === 'knowledge' && canEditKnowledge && (
                         <div className="kb-section">
                             <h2 style={{ fontSize: '1.2rem', marginBottom: '16px', color: '#334155' }}>ナレッジベース (知識管理)</h2>
                             <p style={{ fontSize: '0.9rem', color: '#64748b', marginBottom: '16px' }}>
@@ -122,7 +255,7 @@ export default function DashboardClient({ tenant }: { tenant: any }) {
                             </div>
 
 
-                            {/* File Import (PDF/Word/CSV) - PRIORITY_TOP */}
+                            {/* File Import (PDF/Word/CSV) */}
                             <div style={{ background: '#f0fdf4', padding: '16px', borderRadius: '8px', border: '1px dashed #bbf7d0', marginBottom: '24px' }}>
                                 <h4 style={{ margin: '0 0 12px 0', fontSize: '0.9rem', color: '#15803d' }}>📂 ファイルからインポート (PDF/Word/CSV)</h4>
                                 <form action={importKnowledgeFromFile}>
@@ -175,9 +308,6 @@ export default function DashboardClient({ tenant }: { tenant: any }) {
                                 )}
                             </div>
 
-
-
-
                             {/* Add Single */}
                             <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', marginBottom: '24px' }}>
                                 <h4 style={{ margin: '0 0 12px 0', fontSize: '0.9rem', color: '#64748b' }}>📝 1件ずつ追加</h4>
@@ -197,9 +327,6 @@ export default function DashboardClient({ tenant }: { tenant: any }) {
                                 </form>
                             </div>
 
-
-
-
                             {/* Bulk Import */}
                             <div style={{ background: '#f0f9ff', padding: '16px', borderRadius: '8px', border: '1px dashed #bae6fd' }}>
                                 <h4 style={{ margin: '0 0 12px 0', fontSize: '0.9rem', color: '#0369a1' }}>🚀 テキスト一括インポート (長文対応)</h4>
@@ -215,7 +342,7 @@ export default function DashboardClient({ tenant }: { tenant: any }) {
                                         </select>
                                         <textarea
                                             name="text"
-                                            placeholder={`[FAQ] 質問...&#13;&#10;回答...&#13;&#10;&#13;&#10;[PRICE]...&#13;&#10;&#13;&#10;のように、ヘッダー行をつけることで自動分類されます。`}
+                                            placeholder={`[FAQ] 質問...\r\n回答...\r\n\r\n[PRICE]...\r\n\r\nのように、ヘッダー行をつけることで自動分類されます。`}
                                             style={{ width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid #bae6fd', minHeight: '120px', fontSize: '0.9rem' }}
                                         />
                                     </div>

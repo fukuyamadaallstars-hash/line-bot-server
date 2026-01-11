@@ -313,6 +313,25 @@ export default function TenantCard({ tenant }: { tenant: any }) {
                                         <label htmlFor={`web-portal-${tenant.tenant_id}`}>Enable Portal Access</label>
                                     </div>
                                 </div>
+
+                                {/* ポータル権限設定 */}
+                                <div style={{ marginTop: '12px', padding: '12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                                    <h5 style={{ margin: '0 0 8px 0', fontSize: '0.8rem', color: '#64748b' }}>🔐 ポータル機能の権限</h5>
+                                    <input type="hidden" name="portal_permissions_present" value="true" />
+                                    <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', cursor: 'pointer' }}>
+                                            <input type="checkbox" name="portal_allow_prompt_edit" defaultChecked={tenant.portal_allow_prompt_edit} />
+                                            プロンプト編集を許可
+                                        </label>
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', cursor: 'pointer' }}>
+                                            <input type="checkbox" name="portal_allow_knowledge_edit" defaultChecked={tenant.portal_allow_knowledge_edit} />
+                                            ナレッジ編集を許可
+                                        </label>
+                                    </div>
+                                    <p style={{ margin: '8px 0 0 0', fontSize: '0.7rem', color: '#94a3b8' }}>
+                                        ※ API設定（トークン入力）は常に許可されます
+                                    </p>
+                                </div>
                             </div>
 
                             <div style={{ borderTop: '1px solid #eee', paddingTop: '12px', marginTop: '12px' }}>

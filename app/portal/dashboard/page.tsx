@@ -17,7 +17,9 @@ export default async function DashboardPage() {
     const { data: tenant } = await supabase
         .from('tenants')
         .select(`
-            tenant_id, display_name, system_prompt, 
+            tenant_id, display_name, system_prompt,
+            portal_allow_prompt_edit, portal_allow_knowledge_edit,
+            line_channel_access_token, line_channel_secret, google_sheet_id,
             knowledge_base (id, content, category)
         `)
         .eq('tenant_id', session.tenant_id)

@@ -89,6 +89,12 @@ export async function updateTenant(formData: FormData) {
         updates['reservation_enabled'] = formData.get('reservation_enabled') === 'on';
     }
 
+    // Handle portal permission checkboxes
+    if (formData.has('portal_permissions_present')) {
+        updates['portal_allow_prompt_edit'] = formData.get('portal_allow_prompt_edit') === 'on';
+        updates['portal_allow_knowledge_edit'] = formData.get('portal_allow_knowledge_edit') === 'on';
+    }
+
     // Handle JSON fields (if sent as JSON strings)
     if (formData.has('next_contract_changes')) {
         try {
