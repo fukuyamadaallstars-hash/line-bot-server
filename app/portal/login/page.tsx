@@ -22,6 +22,7 @@ export default function PortalLogin() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ tenant_id, password }),
+                credentials: 'include',
             });
 
             const data = await res.json();
