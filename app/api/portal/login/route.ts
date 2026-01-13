@@ -3,15 +3,15 @@ import { createClient } from '@supabase/supabase-js';
 import { SignJWT } from 'jose';
 import { cookies } from 'next/headers';
 
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
-const SECRET_KEY = new TextEncoder().encode(process.env.SUPABASE_SERVICE_ROLE_KEY);
-
 export async function POST(request: Request) {
     try {
+        const supabase = createClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.SUPABASE_SERVICE_ROLE_KEY!
+        );
+
+        const SECRET_KEY = new TextEncoder().encode(process.env.SUPABASE_SERVICE_ROLE_KEY);
+
         const { tenant_id, password } = await request.json();
 
         if (!tenant_id || !password) {
