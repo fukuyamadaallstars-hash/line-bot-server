@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { SignJWT } from 'jose';
 import { cookies, headers } from 'next/headers';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/rateLimit';
 
 export async function POST(request: Request) {
     const supabase = createClient(
@@ -13,6 +14,16 @@ export async function POST(request: Request) {
     const headersList = await headers();
     const ip = headersList.get('x-forwarded-for')?.split(',')[0] || 'unknown';
     const userAgent = headersList.get('user-agent') || 'unknown';
+
+    // Rate Limiting: 5 login attempts per IP per minute (prevent brute force)
+    const rateLimitKey = `portal_login:${ip}`;
+    const rateCheck = checkRateLimit(rateLimitKey, RATE_LIMITS.PORTAL_LOGIN);
+    if (!rateCheck.allowed) {
+        console.log(`[Rate Limit] IP ${ip} exceeded login attempt limit`);
+        return NextResponse.json({
+            error: 'ログイン試行回数が上限に達しました。1分後に再度お試しください。'
+        }, { status: 429 });
+    }
 
     let tenant_id = 'unknown';
 

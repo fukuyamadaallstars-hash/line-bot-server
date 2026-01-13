@@ -4,6 +4,7 @@ import OpenAI from 'openai';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 import { decrypt } from '@/lib/crypto';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/rateLimit';
 import { google } from 'googleapis';
 
 // Supabase初期化
@@ -136,6 +137,18 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
     const userMessage = event.message.text;
     const userId = event.source.userId;
     const eventId = event.webhookEventId;
+
+    // Rate Limiting: 20 messages per user per minute
+    const rateLimitKey = `line:${tenantId}:${userId}`;
+    const rateCheck = checkRateLimit(rateLimitKey, RATE_LIMITS.LINE_BOT_USER);
+    if (!rateCheck.allowed) {
+        console.log(`[Rate Limit] User ${userId} exceeded limit for tenant ${tenantId}`);
+        await lineClient.replyMessage({
+            replyToken: event.replyToken,
+            messages: [{ type: 'text', text: '申し訳ありません。メッセージの送信頻度が高すぎます。\n少し時間をおいてから再度お試しください。' }]
+        });
+        return;
+    }
 
     try {
         const { data: existingLog } = await supabase.from('usage_logs').select('id').eq('tenant_id', tenantId).eq('event_id', eventId).maybeSingle();
