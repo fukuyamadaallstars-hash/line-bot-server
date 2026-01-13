@@ -516,6 +516,41 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
                 await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: resultMsg }] });
                 return;
             }
+
+            // 9. チャット履歴リセット (#RESET / #RESET_ALL)
+            if (command === '#RESET') {
+                if (!user.is_staff) {
+                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '⛔️ 権限がありません。' }] });
+                    return;
+                }
+
+                // 自分（スタッフ）のチャット履歴のみ削除
+                const { error } = await supabase.from('chat_history').delete().eq('tenant_id', tenantId).eq('user_id', userId);
+                if (error) {
+                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '❌ リセットに失敗しました: ' + error.message }] });
+                    return;
+                }
+
+                await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '✅ あなたのチャット履歴をリセットしました。\n新しい会話を始めてください。' }] });
+                return;
+            }
+
+            if (command === '#RESET_ALL') {
+                if (!user.is_staff) {
+                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '⛔️ 権限がありません。' }] });
+                    return;
+                }
+
+                // このテナントの全ユーザーのチャット履歴を削除
+                const { error } = await supabase.from('chat_history').delete().eq('tenant_id', tenantId);
+                if (error) {
+                    await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '❌ リセットに失敗しました: ' + error.message }] });
+                    return;
+                }
+
+                await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '✅ このテナントの全ユーザーのチャット履歴をリセットしました。' }] });
+                return;
+            }
         } // End of Staff Command Handler
 
         const check = checkSensitivy(userMessage, customKeywords);
