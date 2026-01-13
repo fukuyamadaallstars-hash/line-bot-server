@@ -90,14 +90,10 @@ export async function updateTenant(formData: FormData) {
     }
 
     // Handle portal permission checkboxes
-    // NOTE: These columns need to be added to the database first:
-    // ALTER TABLE tenants ADD COLUMN portal_allow_prompt_edit BOOLEAN DEFAULT true;
-    // ALTER TABLE tenants ADD COLUMN portal_allow_knowledge_edit BOOLEAN DEFAULT true;
-    // Uncomment below after running the SQL above:
-    // if (formData.has('portal_permissions_present')) {
-    //     updates['portal_allow_prompt_edit'] = formData.get('portal_allow_prompt_edit') === 'on';
-    //     updates['portal_allow_knowledge_edit'] = formData.get('portal_allow_knowledge_edit') === 'on';
-    // }
+    if (formData.has('portal_permissions_present')) {
+        updates['portal_allow_prompt_edit'] = formData.get('portal_allow_prompt_edit') === 'on';
+        updates['portal_allow_knowledge_edit'] = formData.get('portal_allow_knowledge_edit') === 'on';
+    }
 
     // Handle JSON fields (if sent as JSON strings)
     if (formData.has('next_contract_changes')) {
