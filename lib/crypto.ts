@@ -7,8 +7,32 @@ const ALGORITHM = 'aes-256-cbc';
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || '0000000000000000000000000000000000000000000000000000000000000000';
 const IV_LENGTH = 16; // For AES, this is always 16
 
+/**
+ * Check if a value is already encrypted (iv:encrypted format)
+ */
+export function isEncrypted(text: string): boolean {
+    if (!text) return false;
+    // Encrypted format: 32 hex chars (IV) + ':' + hex chars (encrypted data)
+    // IV is always 16 bytes = 32 hex characters
+    const parts = text.split(':');
+    if (parts.length !== 2) return false;
+    const [iv, encrypted] = parts;
+    // IV must be exactly 32 hex characters
+    if (iv.length !== 32) return false;
+    // Both parts must be valid hex
+    const hexRegex = /^[0-9a-fA-F]+$/;
+    return hexRegex.test(iv) && hexRegex.test(encrypted) && encrypted.length >= 32;
+}
+
 export function encrypt(text: string): string {
     if (!text) return text;
+
+    // Prevent double encryption
+    if (isEncrypted(text)) {
+        console.log('[crypto] Value already encrypted, skipping');
+        return text;
+    }
+
     try {
         const iv = randomBytes(IV_LENGTH);
         const cipher = createCipheriv(ALGORITHM, Buffer.from(ENCRYPTION_KEY, 'hex'), iv);
@@ -17,9 +41,6 @@ export function encrypt(text: string): string {
         return iv.toString('hex') + ':' + encrypted.toString('hex');
     } catch (e) {
         console.error('Encryption failed:', e);
-        return text; // Fallback to raw (dangerous but prevents crash during migration) or throw? 
-        // Ideally throw, but for partial migration scenarios, we might want to handle gracefully.
-        // However, for security, we should ensure everything is encrypted.
         throw e;
     }
 }
@@ -49,3 +70,4 @@ export function decrypt(text: string): string {
         return text;
     }
 }
+
