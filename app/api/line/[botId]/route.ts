@@ -769,7 +769,9 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
 
         if (choice.message.tool_calls) {
             const sheets = await getGoogleSheetsClient();
+            const rawSheetId = tenant.google_sheet_id;
             const sheetId = decrypt(tenant.google_sheet_id);
+            console.log(`[DEBUG] SheetID Raw=${rawSheetId?.substring(0, 30)}..., Decrypted=${sheetId?.substring(0, 30)}...`);
 
             if (sheets && sheetId) {
                 console.log(`[DEBUG] Tool execution started for ${choice.message.tool_calls.length} calls.`);
