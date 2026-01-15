@@ -460,12 +460,19 @@ export async function importKnowledgeFromText(formData: FormData) {
                                 console.log(`[AI Q&A生成] Object.valuesから配列を発見`);
                                 qaData = firstArray;
                             } else {
-                                console.log(`[AI Q&A生成] 配列が見つからない, keys: ${Object.keys(qaData).join(', ')}`);
-                                qaData = [];
+                                // 単一Q&Aオブジェクト（配列ではない）の場合
+                                if (qaData.q && qaData.a) {
+                                    console.log(`[AI Q&A生成] 単一Q&Aオブジェクトを検出`);
+                                    qaData = [qaData]; // 配列にラップ
+                                } else {
+                                    console.log(`[AI Q&A生成] 配列が見つからない, keys: ${Object.keys(qaData).join(', ')}`);
+                                    qaData = [];
+                                }
                             }
                         }
                     }
 
+                    const beforeCount = processedChunks.length;
                     for (const item of qaData) {
                         if (item.q && item.a) {
                             const validCategories = ['FAQ', 'OFFER', 'PRICE', 'PROCESS', 'POLICY', 'CONTEXT'];
@@ -479,17 +486,37 @@ export async function importKnowledgeFromText(formData: FormData) {
                             });
                         }
                     }
+                    const addedCount = processedChunks.length - beforeCount;
+
+                    // フォールバック: Q&Aが0件の場合、元テキストをそのまま登録
+                    if (addedCount === 0) {
+                        console.log(`[AI Q&A生成] 0件のため、元テキストをそのまま登録 (${textPart.length}文字)`);
+                        processedChunks.push({
+                            content: textPart,
+                            category: chunk.category
+                        });
+                    }
                 } catch (parseError) {
                     console.error('[JSON Parse Error]', parseError);
                     // フォールバック: テキストとして処理
                     const qaBlocks = qaRaw.split(/\n\n+/).filter(b => b.trim());
+                    let found = false;
                     for (const block of qaBlocks) {
                         if (block.includes("Q:") && block.includes("A:")) {
                             processedChunks.push({
                                 content: block.trim(),
                                 category: 'FAQ'
                             });
+                            found = true;
                         }
+                    }
+                    // それでも見つからなければ元テキストを登録
+                    if (!found) {
+                        console.log(`[JSON Parse Error] 元テキストをそのまま登録 (${textPart.length}文字)`);
+                        processedChunks.push({
+                            content: textPart,
+                            category: chunk.category
+                        });
                     }
                 }
             }
