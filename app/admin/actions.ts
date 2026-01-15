@@ -288,7 +288,12 @@ export async function importKnowledgeFromText(formData: FormData) {
     const defaultCategory = formData.get('category') as string || 'FAQ';
     const text = formData.get('text') as string;
 
-    if (!text || !text.trim()) return;
+    console.log(`[Knowledge Import] 開始: tenant=${tenant_id}, テキスト長=${text?.length || 0}文字`);
+
+    if (!text || !text.trim()) {
+        console.log('[Knowledge Import] エラー: テキストが空です');
+        return;
+    }
 
     // Split line by line to support strict separation based on headers
     const lines = text.split('\n');
@@ -344,8 +349,11 @@ export async function importKnowledgeFromText(formData: FormData) {
         finalChunks.push({ content: currentBuffer, category: currentCategory });
     }
 
+    console.log(`[Knowledge Import] 初期チャンク数: ${finalChunks.length}`);
+
     // Filter out very short chunks (likely just headers like "FAQ" or "PROCESS")
     const validChunks = finalChunks.filter(c => c.content.length > 10);
+    console.log(`[Knowledge Import] 有効チャンク数 (10文字以上): ${validChunks.length}`);
 
     // ★ AI自動Q&A生成: タグなしの長文をQ&A形式に変換
     const processedChunks: { content: string, category: string }[] = [];
@@ -475,9 +483,14 @@ export async function importKnowledgeFromText(formData: FormData) {
         }));
 
         const { error } = await supabase.from('knowledge_base').insert(records);
-        if (error) console.error('Batch insert error', error);
+        if (error) {
+            console.error('[Knowledge Import] DB挿入エラー:', error);
+        } else {
+            console.log(`[Knowledge Import] バッチ ${Math.floor(i / 5) + 1} 完了: ${batch.length}件`);
+        }
     }
 
+    console.log(`[Knowledge Import] 完了: 合計 ${processedChunks.length}件のQ&Aを登録`);
     revalidatePath('/admin');
 }
 
