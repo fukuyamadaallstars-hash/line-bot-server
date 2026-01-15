@@ -18,6 +18,86 @@ export default function TenantCard({ tenant }: { tenant: any }) {
     const [pdfText, setPdfText] = useState<string>('');
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    // バッチインポート用の状態
+    const [batchStatus, setBatchStatus] = useState<string>('');
+    const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
+    const [isImporting, setIsImporting] = useState(false);
+
+    const BATCH_SIZE = 50000; // 5万文字ごとに分割
+
+    // バッチ分割してインポートする関数
+    const handleBatchImport = async (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+
+        const formData = new FormData(e.currentTarget);
+        const text = formData.get('text') as string;
+        const category = formData.get('category') as string;
+        const tenant_id = formData.get('tenant_id') as string;
+
+        if (!text || !text.trim()) {
+            alert('テキストを入力してください');
+            return;
+        }
+
+        const textLength = text.length;
+
+        // 5万文字以下なら通常処理
+        if (textLength <= BATCH_SIZE) {
+            setBatchStatus('処理中...');
+            setIsImporting(true);
+            try {
+                await importKnowledgeFromText(formData);
+                setBatchStatus('✅ 完了');
+                setPdfText(''); // クリア
+                setTimeout(() => {
+                    setBatchStatus('');
+                    window.location.reload();
+                }, 1500);
+            } catch (err: any) {
+                setBatchStatus('❌ エラー: ' + err.message);
+            } finally {
+                setIsImporting(false);
+            }
+            return;
+        }
+
+        // 5万文字以上ならバッチ分割
+        const batches: string[] = [];
+        for (let i = 0; i < textLength; i += BATCH_SIZE) {
+            batches.push(text.slice(i, i + BATCH_SIZE));
+        }
+
+        setIsImporting(true);
+        setBatchProgress({ current: 0, total: batches.length });
+        setBatchStatus(`📦 ${batches.length}バッチに分割して処理開始...`);
+
+        try {
+            for (let i = 0; i < batches.length; i++) {
+                setBatchProgress({ current: i + 1, total: batches.length });
+                setBatchStatus(`⏳ バッチ ${i + 1}/${batches.length} を処理中... (${batches[i].length.toLocaleString()}文字)`);
+
+                const batchFormData = new FormData();
+                batchFormData.set('tenant_id', tenant_id);
+                batchFormData.set('category', category);
+                batchFormData.set('text', batches[i]);
+
+                await importKnowledgeFromText(batchFormData);
+            }
+
+            setBatchStatus(`✅ 全${batches.length}バッチの処理が完了しました！`);
+            setPdfText(''); // クリア
+            setTimeout(() => {
+                setBatchStatus('');
+                setBatchProgress(null);
+                window.location.reload();
+            }, 2000);
+        } catch (err: any) {
+            setBatchStatus(`❌ バッチ ${batchProgress?.current}/${batches.length} でエラー: ${err.message}`);
+        } finally {
+            setIsImporting(false);
+        }
+    };
+
     // PDF.js ライブラリを動的にロード
     useEffect(() => {
         if (typeof window !== 'undefined' && !window.pdfjsLib) {
@@ -648,10 +728,10 @@ export default function TenantCard({ tenant }: { tenant: any }) {
                                         </button>
                                     </form>
                                 </div>
-                                <form action={importKnowledgeFromText} style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px' }}>
+                                <form onSubmit={handleBatchImport} style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px' }}>
                                     <input type="hidden" name="tenant_id" value={tenant.tenant_id} />
                                     <div style={{ marginBottom: '8px' }}>
-                                        <select name="category" className="kb-input" style={{ width: '100%', marginBottom: '8px' }} defaultValue="FAQ">
+                                        <select name="category" className="kb-input" style={{ width: '100%', marginBottom: '8px' }} defaultValue="FAQ" disabled={isImporting}>
                                             <option value="FAQ">FAQ (よくある質問)</option>
                                             <option value="OFFER">OFFER (キャンペーン)</option>
                                             <option value="PRICE">PRICE (料金・コース)</option>
@@ -662,13 +742,50 @@ export default function TenantCard({ tenant }: { tenant: any }) {
                                         <textarea
                                             name="text"
                                             className="prompt-textarea"
-                                            placeholder="ここに長文を貼り付けてください。&#13;&#10;・段落ごとに自動分割されます。&#13;&#10;・文頭に [FAQ] や [PRICE] などのカテゴリ名を書くと、自動でそのカテゴリに振り分けられます。&#13;&#10;・カテゴリ指定がない場合は、上のプルダウンで選択したカテゴリが適用されます。&#13;&#10;・PDFを選択すると、ここに自動入力されます。"
+                                            placeholder="ここに長文を貼り付けてください。&#13;&#10;・5万文字以上の場合は自動でバッチ分割されます。&#13;&#10;・文頭に [FAQ] や [PRICE] などのカテゴリ名を書くと、自動でそのカテゴリに振り分けられます。&#13;&#10;・PDFを選択すると、ここに自動入力されます。"
                                             style={{ height: '120px', width: '100%', fontSize: '0.8rem' }}
                                             defaultValue={pdfText}
-                                            key={pdfText} // pdfTextが変わったら再レンダリング
+                                            key={pdfText}
+                                            disabled={isImporting}
                                         />
                                     </div>
-                                    <button type="submit" className="btn btn-primary" style={{ width: '100%', fontSize: '0.85rem' }}>🚀 AI自動分割して一括登録</button>
+                                    {/* 進捗表示 */}
+                                    {batchStatus && (
+                                        <div style={{
+                                            padding: '8px 12px',
+                                            marginBottom: '8px',
+                                            background: batchStatus.includes('❌') ? '#fee2e2' : batchStatus.includes('✅') ? '#dcfce7' : '#e0f2fe',
+                                            borderRadius: '6px',
+                                            fontSize: '0.85rem'
+                                        }}>
+                                            {batchStatus}
+                                            {batchProgress && batchProgress.total > 1 && (
+                                                <div style={{ marginTop: '6px' }}>
+                                                    <div style={{
+                                                        background: '#e2e8f0',
+                                                        borderRadius: '4px',
+                                                        height: '8px',
+                                                        overflow: 'hidden'
+                                                    }}>
+                                                        <div style={{
+                                                            background: '#3b82f6',
+                                                            height: '100%',
+                                                            width: `${(batchProgress.current / batchProgress.total) * 100}%`,
+                                                            transition: 'width 0.3s ease'
+                                                        }} />
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                    <button
+                                        type="submit"
+                                        className="btn btn-primary"
+                                        style={{ width: '100%', fontSize: '0.85rem' }}
+                                        disabled={isImporting}
+                                    >
+                                        {isImporting ? '⏳ 処理中...' : '🚀 AI自動分割して一括登録'}
+                                    </button>
                                 </form>
                             </div>
                         </div>
