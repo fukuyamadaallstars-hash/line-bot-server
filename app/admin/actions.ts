@@ -352,11 +352,30 @@ export async function importKnowledgeFromText(formData: FormData) {
     console.log(`[Knowledge Import] 初期チャンク数: ${finalChunks.length}`);
 
     // Filter out very short chunks (likely just headers like "FAQ" or "PROCESS")
-    const validChunks = finalChunks.filter(c => c.content.length > 10);
+    let validChunks = finalChunks.filter(c => c.content.length > 10);
     console.log(`[Knowledge Import] 有効チャンク数 (10文字以上): ${validChunks.length}`);
+
+    // ★ 強制分割: 巨大チャンク（3000文字以上）は事前に分割
+    const MAX_CHUNK_SIZE = 3000;
+    const preSplitChunks: { content: string, category: string }[] = [];
+    for (const chunk of validChunks) {
+        if (chunk.content.length <= MAX_CHUNK_SIZE) {
+            preSplitChunks.push(chunk);
+        } else {
+            // 強制分割
+            const parts = recursiveSplit(chunk.content, MAX_CHUNK_SIZE, 200);
+            console.log(`[Knowledge Import] 巨大チャンク(${chunk.content.length}文字)を${parts.length}個に分割`);
+            for (const part of parts) {
+                preSplitChunks.push({ content: part, category: chunk.category });
+            }
+        }
+    }
+    validChunks = preSplitChunks;
+    console.log(`[Knowledge Import] 分割後チャンク数: ${validChunks.length}`);
 
     // ★ AI自動Q&A生成: タグなしの長文をQ&A形式に変換
     const processedChunks: { content: string, category: string }[] = [];
+
 
     for (const chunk of validChunks) {
         // タグ付きで短い（800文字以下）ならそのまま
@@ -415,14 +434,36 @@ export async function importKnowledgeFromText(formData: FormData) {
                 });
 
                 const qaRaw = qaResponse.choices[0]?.message?.content || "{}";
+                console.log(`[AI Q&A生成] レスポンス長: ${qaRaw.length}文字, 先頭: ${qaRaw.substring(0, 100)}...`);
 
                 try {
                     // JSONパース
                     let qaData = JSON.parse(qaRaw);
+                    console.log(`[AI Q&A生成] パース成功, 型: ${typeof qaData}, isArray: ${Array.isArray(qaData)}`);
 
                     // 配列でない場合は配列プロパティを探す
                     if (!Array.isArray(qaData)) {
-                        qaData = qaData.qa || qaData.items || qaData.questions || qaData.data || [];
+                        // 様々なキー名を試す
+                        const possibleKeys = ['qa', 'items', 'questions', 'data', 'results', 'faqs', 'qas', 'content'];
+                        for (const key of possibleKeys) {
+                            if (qaData[key] && Array.isArray(qaData[key])) {
+                                console.log(`[AI Q&A生成] 配列を "${key}" キーから取得`);
+                                qaData = qaData[key];
+                                break;
+                            }
+                        }
+                        // それでも配列でなければ、Object.valuesから最初の配列を探す
+                        if (!Array.isArray(qaData)) {
+                            const values = Object.values(qaData);
+                            const firstArray = values.find(v => Array.isArray(v));
+                            if (firstArray) {
+                                console.log(`[AI Q&A生成] Object.valuesから配列を発見`);
+                                qaData = firstArray;
+                            } else {
+                                console.log(`[AI Q&A生成] 配列が見つからない, keys: ${Object.keys(qaData).join(', ')}`);
+                                qaData = [];
+                            }
+                        }
                     }
 
                     for (const item of qaData) {
