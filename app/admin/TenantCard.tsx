@@ -3,10 +3,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { updateTenant, addKnowledge, deleteKnowledge, deleteAllKnowledge, resumeAi, quickAddToken, addTokenPurchase, createInvoiceStub, importKnowledgeFromText, importKnowledgeFromFile, reEmbedAllKnowledge, toggleTenantActive, createTenant } from './actions';
 
-// PDF.js を動的に読み込むためのグローバル宣言
+// PDF.js と Tesseract.js を動的に読み込むためのグローバル宣言
 declare global {
     interface Window {
         pdfjsLib: any;
+        Tesseract: any;
     }
 }
 
@@ -98,50 +99,115 @@ export default function TenantCard({ tenant }: { tenant: any }) {
         }
     };
 
-    // PDF.js ライブラリを動的にロード
+    // PDF.js と Tesseract.js ライブラリを動的にロード
     useEffect(() => {
-        if (typeof window !== 'undefined' && !window.pdfjsLib) {
-            const script = document.createElement('script');
-            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-            script.async = true;
-            script.onload = () => {
+        if (typeof window === 'undefined') return;
+
+        // PDF.js
+        if (!window.pdfjsLib) {
+            const pdfScript = document.createElement('script');
+            pdfScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+            pdfScript.async = true;
+            pdfScript.onload = () => {
                 if (window.pdfjsLib) {
                     window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
                 }
             };
-            document.head.appendChild(script);
+            document.head.appendChild(pdfScript);
+        }
+
+        // Tesseract.js (OCR)
+        if (!window.Tesseract) {
+            const tesseractScript = document.createElement('script');
+            tesseractScript.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+            tesseractScript.async = true;
+            document.head.appendChild(tesseractScript);
         }
     }, []);
 
-    // PDF ファイルからテキストを抽出する関数
+    // PDF ファイルからテキストを抽出する関数（OCRフォールバック付き）
     const extractTextFromPdf = async (file: File): Promise<string> => {
-        return new Promise(async (resolve, reject) => {
+        if (!window.pdfjsLib) {
+            throw new Error('PDF.js がまだ読み込まれていません。少し待ってから再度お試しください。');
+        }
+
+        setPdfStatus('📄 PDFを解析中...');
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+        let fullText = '';
+        const totalPages = pdf.numPages;
+
+        // まずテキストレイヤーから抽出を試みる
+        for (let i = 1; i <= totalPages; i++) {
+            setPdfStatus(`📄 ページ ${i}/${totalPages} を処理中...`);
+            const page = await pdf.getPage(i);
+            const textContent = await page.getTextContent();
+            const pageText = textContent.items.map((item: any) => item.str).join(' ');
+            fullText += pageText + '\n\n';
+        }
+
+        // テキストが抽出できた場合はそのまま返す
+        const trimmedText = fullText.trim();
+        if (trimmedText.length > 50) {
+            setPdfStatus('');
+            return trimmedText;
+        }
+
+        // テキストが空または少ない場合はOCRにフォールバック
+        if (!window.Tesseract) {
+            setPdfStatus('');
+            throw new Error('スキャンPDFです。OCRライブラリがまだ読み込まれていません。\n少し待ってから再度お試しください。');
+        }
+
+        const confirmOcr = confirm(
+            '📸 このPDFはスキャン画像（テキストなし）です。\n\n' +
+            'OCR（光学文字認識）でテキストを抽出しますか？\n' +
+            '※処理に時間がかかる場合があります（1ページあたり約10〜30秒）'
+        );
+
+        if (!confirmOcr) {
+            setPdfStatus('');
+            throw new Error('OCR処理がキャンセルされました');
+        }
+
+        setPdfStatus('🔤 OCR処理を開始します...');
+
+        let ocrText = '';
+        const scale = 2.0; // 高解像度でレンダリング
+
+        for (let i = 1; i <= totalPages; i++) {
+            setPdfStatus(`🔤 OCR: ページ ${i}/${totalPages} を認識中...（日本語）`);
+
+            const page = await pdf.getPage(i);
+            const viewport = page.getViewport({ scale });
+
+            // Canvasにレンダリング
+            const canvas = document.createElement('canvas');
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+            const ctx = canvas.getContext('2d')!;
+
+            await page.render({ canvasContext: ctx, viewport }).promise;
+
+            // OCR実行
             try {
-                if (!window.pdfjsLib) {
-                    reject(new Error('PDF.js がまだ読み込まれていません。少し待ってから再度お試しください。'));
-                    return;
-                }
-
-                setPdfStatus('📄 PDFを解析中...');
-                const arrayBuffer = await file.arrayBuffer();
-                const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-
-                let fullText = '';
-                for (let i = 1; i <= pdf.numPages; i++) {
-                    setPdfStatus(`📄 ページ ${i}/${pdf.numPages} を処理中...`);
-                    const page = await pdf.getPage(i);
-                    const textContent = await page.getTextContent();
-                    const pageText = textContent.items.map((item: any) => item.str).join(' ');
-                    fullText += pageText + '\n\n';
-                }
-
-                setPdfStatus('');
-                resolve(fullText.trim());
-            } catch (error: any) {
-                setPdfStatus('');
-                reject(error);
+                const result = await window.Tesseract.recognize(canvas, 'jpn+eng', {
+                    logger: (m: any) => {
+                        if (m.status === 'recognizing text') {
+                            setPdfStatus(`🔤 OCR: ページ ${i}/${totalPages} 認識中... ${Math.round(m.progress * 100)}%`);
+                        }
+                    }
+                });
+                ocrText += result.data.text + '\n\n';
+            } catch (ocrError: any) {
+                console.error(`OCR error on page ${i}:`, ocrError);
+                ocrText += `[ページ ${i}: OCRエラー]\n\n`;
             }
-        });
+        }
+
+        setPdfStatus('');
+        return ocrText.trim();
     };
 
     // ファイル選択時のハンドラ
