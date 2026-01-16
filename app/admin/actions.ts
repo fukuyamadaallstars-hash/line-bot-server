@@ -550,11 +550,33 @@ export async function importKnowledgeFromText(formData: FormData) {
             embedding: embeddingResponse.data[idx].embedding
         }));
 
-        const { error } = await supabase.from('knowledge_base').insert(records);
-        if (error) {
-            console.error('[Knowledge Import] DB挿入エラー:', error);
+        // 重複チェック: 既存のナレッジと内容が完全一致するものをスキップ
+        const newRecords = [];
+        for (const record of records) {
+            // DBに同じcontentが存在するか確認
+            const { data: existing } = await supabase
+                .from('knowledge_base')
+                .select('id')
+                .eq('tenant_id', tenant_id)
+                .eq('content', record.content)
+                .maybeSingle();
+
+            if (!existing) {
+                newRecords.push(record);
+            } else {
+                console.log(`[Knowledge Import] 重複スキップ: ${record.content.substring(0, 30)}...`);
+            }
+        }
+
+        if (newRecords.length > 0) {
+            const { error } = await supabase.from('knowledge_base').insert(newRecords);
+            if (error) {
+                console.error('[Knowledge Import] DB挿入エラー:', error);
+            } else {
+                console.log(`[Knowledge Import] バッチ ${Math.floor(i / 5) + 1} 完了: ${newRecords.length}/${batch.length}件登録 (重複${batch.length - newRecords.length}件スキップ)`);
+            }
         } else {
-            console.log(`[Knowledge Import] バッチ ${Math.floor(i / 5) + 1} 完了: ${batch.length}件`);
+            console.log(`[Knowledge Import] バッチ ${Math.floor(i / 5) + 1} スキップ: 全て重複済み`);
         }
     }
 
