@@ -662,12 +662,8 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
 
         // シートが連携されている場合のみ、予約ツールの使用を強制する
         if (tenant.google_sheet_id) {
-            planInstructions = `\n\n【予約システム連携中 - 以下のツール利用規定を遵守してください】
-1. **予約の確認**: ユーザーから「空いていますか」と聞かれたら『check_schedule』で確認してください。
-2. **予約の登録**: ユーザーが予約を希望し、日時と名前が揃っている場合は、『add_reservation』を実行してください。
-   - **重要**: 名前が不明な場合は、必ず「予約者のお名前を教えていただけますか？」と聞き返してください。
-   - ツール実行前には、念のため『check_schedule』でその日時の空きを確認することを推奨します。
-3. **予約のキャンセル**: キャンセル依頼にはまず『check_my_reservation』で状況を確認してから、同意を得て『cancel_reservation』を実行してください。`;
+            // planInstructions = `...`; // Temporarily disabled to stop loop
+            planInstructions = "";
         }
 
         const userMemo = user.internal_memo ? `\n\n【お客様メモ (スタッフ共有事項)】\n${user.internal_memo}\n※この情報はユーザーには見せず、接客の参考にしてください。` : "";
