@@ -14,8 +14,8 @@ export default function TenantList({ tenants }: { tenants: any[] }) {
         const query = search.toLowerCase();
         const matchesSearch =
             (t.display_name || '').toLowerCase().includes(query) ||
-            t.tenant_id.includes(query) ||
-            t.google_sheet_id?.includes(query);
+            (t.tenant_id || '').toLowerCase().includes(query) ||
+            (t.google_sheet_id || '').toLowerCase().includes(query);
 
         if (!matchesSearch) return false;
 

@@ -436,6 +436,18 @@ export default function TenantCard({ tenant }: { tenant: any }) {
                                 <textarea name="system_prompt" defaultValue={tenant.system_prompt} className="prompt-textarea" style={{ height: '120px' }} />
                             </div>
 
+                            <div style={{ padding: '12px', background: '#f0fdf4', borderRadius: '8px', border: '1px solid #bbf7d0', marginBottom: '12px' }}>
+                                <h5 style={{ margin: '0 0 8px 0', fontSize: '0.8rem', color: '#166534' }}>LINE Messaging API Settings</h5>
+                                <div className="form-group" style={{ marginBottom: '8px' }}>
+                                    <label className="input-label">Channel Access Token</label>
+                                    <input name="line_channel_access_token" defaultValue={tenant.line_channel_access_token === 'SET_ME' ? '' : tenant.line_channel_access_token} className="kb-input" style={{ width: '100%' }} placeholder="LINE Developersからコピー" />
+                                </div>
+                                <div className="form-group">
+                                    <label className="input-label">Channel Secret</label>
+                                    <input name="line_channel_secret" defaultValue={tenant.line_channel_secret === 'SET_ME' ? '' : tenant.line_channel_secret} className="kb-input" style={{ width: '100%' }} placeholder="LINE Developersからコピー" type="password" />
+                                </div>
+                            </div>
+
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
                                 <div><label className="input-label">Google Sheet ID</label><input name="google_sheet_id" defaultValue={tenant.google_sheet_id} className="kb-input" style={{ width: '100%' }} placeholder="Sheet ID" /></div>
                                 <div><label className="input-label">Staff Passcode</label><input name="staff_passcode" defaultValue={tenant.staff_passcode} className="kb-input" style={{ width: '100%' }} placeholder="1234" /></div>

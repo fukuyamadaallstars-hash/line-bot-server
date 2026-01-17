@@ -50,6 +50,8 @@ export async function updateTenant(formData: FormData) {
         'plan', 'model_option', 'additional_token_plan',
         'embedding_model',
         'contract_start_date', 'next_billing_date',
+        // Credentials
+        'line_channel_secret', 'line_channel_access_token', 'openai_api_key',
         // Finance & Contact Info
         'company_name', 'billing_contact_name', 'billing_email',
         'billing_phone', 'billing_address', 'billing_department', 'billing_subject',
