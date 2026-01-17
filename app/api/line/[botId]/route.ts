@@ -658,7 +658,15 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
         const historyMessages = (historyData || []).reverse().map((h: any) => ({ role: h.role, content: h.content }));
 
         // プランごとの追加指示（全プランで統一）
-        const planInstructions = `\n\n【予約キャンセル動作規定】\n・予約キャンセルの依頼があった場合は、いきなりキャンセルを実行せず、必ず『check_my_reservation』ツールを呼び出してユーザーの現在の予約状況を提示し、「こちらの予約をキャンセルしてよろしいですか？」と確認をとってください。\n・さらに、「差し支えなければキャンセルの理由をお聞かせください」と丁寧に伺ってください。\n・ユーザーから明確な同意が得られた場合のみ、『cancel_reservation』を実行してください。その際、理由があればreason引数に含めてください。`;
+        let planInstructions = "";
+
+        // シートが連携されている場合のみ、予約ツールの使用を強制する
+        if (tenant.google_sheet_id) {
+            planInstructions = `\n\n【予約システム連携中 - 以下のツール利用規定を厳守してください】
+1. **予約の確認**: ユーザーから「予約したい」「空いていますか」と聞かれたら、推測で答えず、必ず『check_schedule』ツールを使って空き状況を確認してください。
+2. **予約の登録**: 日時が決まったら、必ず『add_reservation』ツールを実行して予約を確定させてください。「承りました」と口頭で言うだけでは不十分です。
+3. **予約のキャンセル**: キャンセルの依頼があった場合は、まず『check_my_reservation』で予約状況を確認・提示し、「本当にキャンセルしてよろしいですか？」と確認した上で、同意が得られたら『cancel_reservation』を実行してください。`;
+        }
 
         const userMemo = user.internal_memo ? `\n\n【お客様メモ (スタッフ共有事項)】\n${user.internal_memo}\n※この情報はユーザーには見せず、接客の参考にしてください。` : "";
 
