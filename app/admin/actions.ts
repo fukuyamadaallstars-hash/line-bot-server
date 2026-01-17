@@ -186,10 +186,15 @@ export async function createTenant(formData: FormData) {
         system_prompt: defaultPrompt,
         ai_model: 'gpt-4o-mini',
         embedding_model: 'text-embedding-3-small',
+        portal_allow_prompt_edit: false,
+        portal_allow_knowledge_edit: false,
         created_at: new Date().toISOString(),
     });
 
-    if (error) throw new Error('テナント作成エラー: ' + error.message);
+    if (error) {
+        console.error('[createTenant] Error:', error);
+        throw new Error('テナント作成エラー: ' + error.message);
+    }
 
     revalidatePath('/admin');
 }
