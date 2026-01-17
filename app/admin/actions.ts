@@ -50,8 +50,6 @@ export async function updateTenant(formData: FormData) {
         'plan', 'model_option', 'additional_token_plan',
         'embedding_model',
         'contract_start_date', 'next_billing_date',
-        // Credentials
-        'line_channel_secret', 'line_channel_access_token', 'openai_api_key',
         // Finance & Contact Info
         'company_name', 'billing_contact_name', 'billing_email',
         'billing_phone', 'billing_address', 'billing_department', 'billing_subject',
@@ -190,8 +188,6 @@ export async function createTenant(formData: FormData) {
         embedding_model: 'text-embedding-3-small',
         portal_allow_prompt_edit: false,
         portal_allow_knowledge_edit: false,
-        line_channel_secret: 'SET_ME', // NOT NULL制約対策
-        line_channel_access_token: 'SET_ME', // NOT NULL制約対策
         created_at: new Date().toISOString(),
     });
 
