@@ -188,6 +188,8 @@ export async function createTenant(formData: FormData) {
         embedding_model: 'text-embedding-3-small',
         portal_allow_prompt_edit: false,
         portal_allow_knowledge_edit: false,
+        line_channel_secret: 'SET_ME', // NOT NULL制約対策
+        line_channel_access_token: 'SET_ME', // NOT NULL制約対策
         created_at: new Date().toISOString(),
     });
 
