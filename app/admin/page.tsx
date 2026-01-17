@@ -3,6 +3,8 @@ import './admin.css';
 import { updateTenant, addKnowledge, deleteKnowledge, resumeAi, quickAddToken } from './actions';
 import TenantCard from './TenantCard';
 
+import { decrypt } from '@/lib/crypto';
+
 export const dynamic = 'force-dynamic';
 
 function getSupabaseAdmin() {
@@ -25,6 +27,12 @@ async function getTenantsFullData() {
 
     // 各種統計データの集計
     return await Promise.all(tenants.map(async (tenant) => {
+        // Decrypt sensitive info for display
+        tenant.line_channel_access_token = decrypt(tenant.line_channel_access_token);
+        tenant.line_channel_secret = decrypt(tenant.line_channel_secret);
+        tenant.openai_api_key = decrypt(tenant.openai_api_key);
+        tenant.google_sheet_id = decrypt(tenant.google_sheet_id);
+
         // 返信数（usage_logsの件数）
         const { count } = await supabase.from('usage_logs')
             .select('*', { count: 'exact', head: true })
