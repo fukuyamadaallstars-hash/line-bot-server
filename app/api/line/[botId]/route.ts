@@ -565,7 +565,17 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
         }
 
         // ★仕様4: トークン上限・通知 (80% / 95% / 100%)
-        const { data: usageData } = await supabase.from('usage_logs').select('token_usage').eq('tenant_id', tenantId);
+        // 高速化: 全期間ではなく「今月分」のみを集計対象とする
+        const nowObj = new Date();
+        // 今月の1日 00:00:00 (Local Time -> ISO) ※厳密なTimeZone処理が必要なら修正推奨だが、速度改善としては十分
+        const startOfMonth = new Date(nowObj.getFullYear(), nowObj.getMonth(), 1).toISOString();
+
+        const { data: usageData } = await supabase
+            .from('usage_logs')
+            .select('token_usage')
+            .eq('tenant_id', tenantId)
+            .gte('created_at', startOfMonth); // 今月以降のログに限定
+
         const currentTotal = usageData?.reduce((s: number, l: any) => s + (l.token_usage || 0), 0) || 0;
         const limit = tenant.monthly_token_limit;
 
@@ -688,7 +698,8 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
         }
 
         // o1モデル等は非同期/Thinking扱いにする (GPT-5系の上位モデルも含む)
-        const isThinkingModel = selectedModel.startsWith('o1-') || selectedModel.includes('gpt-5.1') || selectedModel.includes('gpt-5.2');
+        // GPT-5 miniなども非同期フローに流した方が体感速度は速い（即座にReplyを返せるため）
+        const isThinkingModel = selectedModel.startsWith('o1-') || selectedModel.startsWith('gpt-5') || selectedModel.includes('gpt-5.1') || selectedModel.includes('gpt-5.2');
 
         // ★非同期推論フロー (GPT-5.1/5.2)
         if (isThinkingModel) {

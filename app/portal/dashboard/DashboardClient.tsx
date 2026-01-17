@@ -14,7 +14,6 @@ export default function DashboardClient({ tenant }: { tenant: any }) {
     // トークン設定状態のチェック（暗号化されていれば設定済み）
     const hasAccessToken = !!tenant.line_channel_access_token;
     const hasChannelSecret = !!tenant.line_channel_secret;
-    const hasSheetId = !!tenant.google_sheet_id;
 
     return (
         <div style={{ minHeight: '100vh', background: '#f8fafc', fontFamily: '"Inter", sans-serif' }}>
@@ -106,11 +105,6 @@ export default function DashboardClient({ tenant }: { tenant: any }) {
                                         {hasChannelSecret ? '✅' : '❌'} Channel Secret
                                     </span>
                                 </div>
-                                <div style={{ padding: '12px 16px', borderRadius: '8px', background: hasSheetId ? '#f0fdf4' : '#f8fafc', border: `1px solid ${hasSheetId ? '#bbf7d0' : '#e2e8f0'}` }}>
-                                    <span style={{ fontSize: '0.8rem', color: hasSheetId ? '#16a34a' : '#64748b' }}>
-                                        {hasSheetId ? '✅' : '⏸️'} Google Sheet ID {!hasSheetId && '(任意)'}
-                                    </span>
-                                </div>
                             </div>
 
                             <form action={updateApiSettings}>
@@ -150,25 +144,6 @@ export default function DashboardClient({ tenant }: { tenant: any }) {
                                         />
                                         <p style={{ margin: '4px 0 0 0', fontSize: '0.75rem', color: '#94a3b8' }}>
                                             LINE Developers Console → チャネル基本設定 → チャネルシークレット
-                                        </p>
-                                    </div>
-
-                                    <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '20px' }}>
-                                        <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.9rem', fontWeight: 'bold', color: '#334155' }}>
-                                            Google Sheet ID（予約機能を使う場合のみ）
-                                        </label>
-                                        <input
-                                            type="text"
-                                            name="google_sheet_id"
-                                            placeholder={hasSheetId ? '（設定済み - 変更する場合のみ入力）' : 'Google SpreadsheetのIDを入力（任意）'}
-                                            style={{
-                                                width: '100%', padding: '12px 16px', borderRadius: '8px',
-                                                border: '1px solid #e2e8f0', fontSize: '0.95rem',
-                                                fontFamily: 'monospace'
-                                            }}
-                                        />
-                                        <p style={{ margin: '4px 0 0 0', fontSize: '0.75rem', color: '#94a3b8' }}>
-                                            SpreadsheetのURL内 https://docs.google.com/spreadsheets/d/<strong>[この部分]</strong>/edit
                                         </p>
                                     </div>
                                 </div>
