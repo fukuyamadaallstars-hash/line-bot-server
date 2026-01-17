@@ -770,6 +770,8 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
             completionParams.tools = getTools(tenant.plan || 'Lite');
         }
 
+        console.log(`[DEBUG] Call OpenAI: Model=${selectedModel}, Tools=${completionParams.tools?.length || 0}, SystemMsgLen=${completionMessages[0].content.length}`);
+
         const completion = await openai.chat.completions.create(completionParams);
 
         const choice = completion.choices[0];
