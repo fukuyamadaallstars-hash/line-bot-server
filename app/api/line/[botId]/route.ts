@@ -138,6 +138,8 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
     const userId = event.source.userId;
     const eventId = event.webhookEventId;
 
+    console.log(`[Event] Tenant=${tenantId}, User=${userId}, HasSheet=${!!tenant.google_sheet_id}`);
+
     // Rate Limiting: 20 messages per user per minute
     const rateLimitKey = `line:${tenantId}:${userId}`;
     const rateCheck = checkRateLimit(rateLimitKey, RATE_LIMITS.LINE_BOT_USER);
