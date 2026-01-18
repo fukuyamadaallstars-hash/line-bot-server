@@ -743,8 +743,9 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
                         model: selectedModel,
                         messages: completionMessages,
                     };
-                    // reasoning_effort を追加 (GPT-5系)
-                    if (reasoningEffort) {
+                    // reasoning_effort を追加 (GPT-5系, miniを除く)
+                    // Error fix: 'gpt-5-mini' does not support 'reasoning' parameter
+                    if (reasoningEffort && selectedModel !== 'gpt-5-mini') {
                         completionParams.reasoning = { effort: reasoningEffort };
                     }
                     // Thinking models might not support tools well yet, or take too long, but we include if configured
