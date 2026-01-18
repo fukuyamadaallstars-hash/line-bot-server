@@ -406,18 +406,18 @@ export default function TenantCard({ tenant }: { tenant: any }) {
                             </div>
 
                             <div className="form-group" style={{ marginBottom: '12px' }}>
-                                <label className="input-label" htmlFor={`model-${tenant.tenant_id}`}>AI Model</label>
-                                <select name="ai_model" id={`model-${tenant.tenant_id}`} key={tenant.ai_model} defaultValue={tenant.ai_model || 'gpt-4o-mini'} className="kb-input" style={{ width: '100%' }}>
-                                    <optgroup label="店舗・予約自動化用">
-                                        <option value="gpt-4o-mini">Standard (GPT-4o mini)</option>
-                                        <option value="gpt-4.1">Pro (GPT-4.1)</option>
-                                    </optgroup>
-                                    <optgroup label="コンサルタント用">
-                                        <option value="gpt-5-mini">Consultant Lite (GPT-5 mini)</option>
-                                        <option value="gpt-5.1">Consultant Pro (GPT-5.1)</option>
-                                        <option value="gpt-5.2">Consultant Ultra (GPT-5.2)</option>
-                                    </optgroup>
+                                <label className="input-label" htmlFor={`mode-${tenant.tenant_id}`}>運用モード</label>
+                                <select name="ai_model" id={`mode-${tenant.tenant_id}`} key={tenant.ai_model} defaultValue={tenant.ai_model || 'salon'} className="kb-input" style={{ width: '100%' }}>
+                                    <option value="salon">🏠 サロン・店舗向け（予約自動化）</option>
+                                    <option value="consultant">💼 コンサル・相談業向け（AI自動判定）</option>
                                 </select>
+                                <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>
+                                    {tenant.ai_model === 'consultant' ? (
+                                        <span>💡 質問の複雑さに応じてAIが自動で精度を調整します（Adaptive Reasoning）</span>
+                                    ) : (
+                                        <span>💡 Liteプラン=GPT-4o mini、Standardプラン=GPT-4.1 が自動適用されます</span>
+                                    )}
+                                </div>
                             </div>
 
                             <div className="form-group" style={{ marginBottom: '12px' }}>

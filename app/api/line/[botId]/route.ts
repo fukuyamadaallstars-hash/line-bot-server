@@ -685,21 +685,21 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
             { role: "user", content: userMessage }
         ];
 
-        // ★Adaptive Reasoning: GPT-5系モデルの場合は複雑さに応じてモード切替
-        const baseModel = tenant.ai_model || "gpt-4o-mini";
-        const isGpt5Family = baseModel.startsWith('gpt-5');
+        // ★運用モードに基づくモデル決定
+        const operationMode = tenant.ai_model || "salon"; // "salon" or "consultant"
+        const tenantPlan = tenant.plan || "Lite"; // "Lite" or "Standard"
 
-        let selectedModel = baseModel;
+        let selectedModel: string;
         let reasoningEffort: string | undefined;
         let isThinkingModel = false;
         let adaptiveSuggestion: string | undefined;
         let adaptiveLogData: any = null;
 
-        if (isGpt5Family) {
-            // GPT-5系: Adaptive Reasoningエンジンを使用
+        if (operationMode === 'consultant') {
+            // コンサル向け: Adaptive Reasoningエンジンを使用 (ベースはgpt-5-mini)
             const reasoningDecision = await determineReasoningMode(
                 userMessage,
-                baseModel,
+                'gpt-5-mini', // ベースモデル固定
                 openaiApiKey,
                 false // hasAttachment - 将来的にevent.message.typeで判定
             );
@@ -712,18 +712,14 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
 
             console.log(`[AdaptiveReasoning] Mode=${reasoningDecision.mode}, Model=${selectedModel}, Effort=${reasoningEffort}, Score=${adaptiveLogData?.final_decision?.total_score}`);
         } else {
-            // 非GPT-5系: 従来のロジック
-            const validModels = [
-                'gpt-4o-mini', 'gpt-4o', 'gpt-3.5-turbo',
-                'gpt-4.1', 'o1-mini', 'o1-preview'
-            ];
-
-            if (!validModels.includes(selectedModel)) {
-                console.log(`[Model Fallback] Invalid model '${selectedModel}' detected. Falling back to 'gpt-4o-mini'.`);
-                selectedModel = 'gpt-4o-mini';
+            // サロン向け: プランに応じた固定モデル
+            if (tenantPlan === 'Standard') {
+                selectedModel = 'gpt-4.1';
+            } else {
+                selectedModel = 'gpt-4o-mini'; // Lite or default
             }
 
-            isThinkingModel = selectedModel.startsWith('o1-');
+            console.log(`[SalonMode] Plan=${tenantPlan}, Model=${selectedModel}`);
         }
 
         // ★非同期推論フロー (Thinking Mode)
