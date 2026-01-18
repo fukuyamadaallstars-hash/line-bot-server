@@ -221,7 +221,7 @@ Current rule-based score: ${currentScore}. Factor this in but make independent j
 Respond ONLY with valid JSON, no explanation.`;
 
     const response = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: 'gpt-5-nano',
         messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: text.substring(0, 1000) } // Truncate for speed
