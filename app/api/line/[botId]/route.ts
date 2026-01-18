@@ -835,8 +835,8 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
             messages: completionMessages,
         };
 
-        // reasoning_effort を追加 (GPT-5系 Instantモード等)
-        if (reasoningEffort) {
+        // reasoning_effort を追加 (GPT-5系 Instantモード等, miniを除く)
+        if (reasoningEffort && selectedModel !== 'gpt-5-mini') {
             completionParams.reasoning = { effort: reasoningEffort };
         }
 
