@@ -111,6 +111,25 @@ export async function determineReasoningMode(
     // Ensure score is not negative
     step2Score = Math.max(0, step2Score);
 
+    // --- Step 2.5: Zero-Latency Fast Pass (Short & Safe check) ---
+    // 単文（挨拶、短い返答など）の場合、LLM判定をスキップして即答モードにする
+    // 条件:
+    // 1. Level A (危険) ヒットしていない (Step 1でPass済み)
+    // 2. Level B (税務等) ヒットしていない
+    // 3. Lead (予約等) ヒットしていない
+    // 4. 文字数が少ない (30文字以下)
+    // 5. 添付ファイルなし
+    if (!levelBHit && !leadHit && text.length <= 30 && !hasAttachment) {
+        const logData = buildLogData(textHash, text, hasAttachment, false, false, false, undefined, step2Score, 'instant', tenantBaseModel, 'minimal', 0);
+        return {
+            model: resolveModel(tenantBaseModel, 'instant'),
+            reasoning_effort: 'minimal',
+            is_thinking: false,
+            mode: 'instant',
+            log_data: logData
+        };
+    }
+
     // --- Step 3: LLM Classification ---
     let llmResult: { soft_score: number; risk: 'low' | 'medium' | 'high'; booking_recommended: boolean } | undefined;
     let classifierLatency = 0;
