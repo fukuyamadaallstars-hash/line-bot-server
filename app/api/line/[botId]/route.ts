@@ -6,6 +6,7 @@ import crypto from 'crypto';
 import { decrypt } from '@/lib/crypto';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rateLimit';
 import { google } from 'googleapis';
+import { determineReasoningMode } from '@/lib/adaptiveReasoning';
 
 // Supabase初期化
 function getSupabaseAdmin() {
@@ -684,25 +685,55 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
             { role: "user", content: userMessage }
         ];
 
-        // モデル選択 & バリデーション
-        let selectedModel = tenant.ai_model || "gpt-4o-mini";
-        const validModels = [
-            'gpt-4o-mini', 'gpt-4o', 'gpt-3.5-turbo',
-            'gpt-4.1', 'gpt-5-mini', 'gpt-5.1', 'gpt-5.2',
-            'o1-mini', 'o1-preview'
-        ];
+        // ★Adaptive Reasoning: GPT-5系モデルの場合は複雑さに応じてモード切替
+        const baseModel = tenant.ai_model || "gpt-4o-mini";
+        const isGpt5Family = baseModel.startsWith('gpt-5');
 
-        if (!validModels.includes(selectedModel)) {
-            console.log(`[Model Fallback] Invalid model '${selectedModel}' detected. Falling back to 'gpt-4o-mini'.`);
-            selectedModel = 'gpt-4o-mini';
+        let selectedModel = baseModel;
+        let reasoningEffort: string | undefined;
+        let isThinkingModel = false;
+        let adaptiveSuggestion: string | undefined;
+        let adaptiveLogData: any = null;
+
+        if (isGpt5Family) {
+            // GPT-5系: Adaptive Reasoningエンジンを使用
+            const reasoningDecision = await determineReasoningMode(
+                userMessage,
+                baseModel,
+                openaiApiKey,
+                false // hasAttachment - 将来的にevent.message.typeで判定
+            );
+
+            selectedModel = reasoningDecision.model;
+            reasoningEffort = reasoningDecision.reasoning_effort;
+            isThinkingModel = reasoningDecision.is_thinking;
+            adaptiveSuggestion = reasoningDecision.suggestion_text;
+            adaptiveLogData = reasoningDecision.log_data;
+
+            console.log(`[AdaptiveReasoning] Mode=${reasoningDecision.mode}, Model=${selectedModel}, Effort=${reasoningEffort}, Score=${adaptiveLogData?.final_decision?.total_score}`);
+        } else {
+            // 非GPT-5系: 従来のロジック
+            const validModels = [
+                'gpt-4o-mini', 'gpt-4o', 'gpt-3.5-turbo',
+                'gpt-4.1', 'o1-mini', 'o1-preview'
+            ];
+
+            if (!validModels.includes(selectedModel)) {
+                console.log(`[Model Fallback] Invalid model '${selectedModel}' detected. Falling back to 'gpt-4o-mini'.`);
+                selectedModel = 'gpt-4o-mini';
+            }
+
+            isThinkingModel = selectedModel.startsWith('o1-');
         }
 
-        // o1モデル等は非同期/Thinking扱いにする (GPT-5系の上位モデルも含む)
-        // GPT-5 miniなども非同期フローに流した方が体感速度は速い（即座にReplyを返せるため）
-        const isThinkingModel = selectedModel.startsWith('o1-') || selectedModel.startsWith('gpt-5') || selectedModel.includes('gpt-5.1') || selectedModel.includes('gpt-5.2');
-
-        // ★非同期推論フロー (GPT-5.1/5.2)
+        // ★非同期推論フロー (Thinking Mode)
         if (isThinkingModel) {
+            // adaptiveSuggestion があればシステムプロンプトに追加
+            if (adaptiveSuggestion) {
+                const baseSystemMsg = completionMessages[0].content;
+                completionMessages[0].content = baseSystemMsg + `\n\n【重要】この質問は複雑なため、回答の冒頭で以下を簡潔に案内してください：「${adaptiveSuggestion}」。その後、可能な範囲で質問に回答してください。`;
+            }
+
             // 1. 即時応答 (Reply API)
             await lineClient.replyMessage({
                 replyToken: event.replyToken,
@@ -716,6 +747,10 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
                         model: selectedModel,
                         messages: completionMessages,
                     };
+                    // reasoning_effort を追加 (GPT-5系)
+                    if (reasoningEffort) {
+                        completionParams.reasoning = { effort: reasoningEffort };
+                    }
                     // Thinking models might not support tools well yet, or take too long, but we include if configured
                     if (tenant.google_sheet_id) {
                         completionParams.tools = getTools(tenant.plan || 'Lite');
@@ -802,6 +837,11 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
             model: selectedModel,
             messages: completionMessages,
         };
+
+        // reasoning_effort を追加 (GPT-5系 Instantモード等)
+        if (reasoningEffort) {
+            completionParams.reasoning = { effort: reasoningEffort };
+        }
 
         if (tenant.google_sheet_id) {
             completionParams.tools = getTools(tenant.plan || 'Lite');
