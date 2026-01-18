@@ -117,9 +117,9 @@ export async function determineReasoningMode(
     // 1. Level A (危険) ヒットしていない (Step 1でPass済み)
     // 2. Level B (税務等) ヒットしていない
     // 3. Lead (予約等) ヒットしていない
-    // 4. 文字数が少ない (30文字以下)
+    // 4. 文字数が少ない (10文字以下)
     // 5. 添付ファイルなし
-    if (!levelBHit && !leadHit && text.length <= 30 && !hasAttachment) {
+    if (!levelBHit && !leadHit && text.length <= 10 && !hasAttachment) {
         const logData = buildLogData(textHash, text, hasAttachment, false, false, false, undefined, step2Score, 'instant', tenantBaseModel, 'minimal', 0);
         return {
             model: resolveModel(tenantBaseModel, 'instant'),
