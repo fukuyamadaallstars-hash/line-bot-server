@@ -436,6 +436,12 @@ export default function TenantCard({ tenant }: { tenant: any }) {
                                 <textarea name="system_prompt" defaultValue={tenant.system_prompt} className="prompt-textarea" style={{ height: '120px' }} />
                             </div>
 
+                            <div className="form-group" style={{ marginBottom: '12px' }}>
+                                <label className="input-label">有人対応キーワード (Passcode)</label>
+                                <input name="handoff_keywords" defaultValue={tenant.handoff_keywords} className="kb-input" style={{ width: '100%' }} placeholder="カンマ区切り (例: 担当者, operator)" />
+                                <div style={{ fontSize: '0.7rem', color: '#64748b' }}>※このキーワードが含まれると、AIが「担当者にお繋ぎします」と案内し、パスコード入力を求めます。</div>
+                            </div>
+
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
                                 <div><label className="input-label">Google Sheet ID</label><input name="google_sheet_id" defaultValue={tenant.google_sheet_id} className="kb-input" style={{ width: '100%' }} placeholder="Sheet ID" /></div>
                                 <div><label className="input-label">Staff Passcode</label><input name="staff_passcode" defaultValue={tenant.staff_passcode} className="kb-input" style={{ width: '100%' }} placeholder="1234" /></div>
