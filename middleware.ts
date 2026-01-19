@@ -3,8 +3,39 @@ import type { NextRequest } from 'next/server';
 import { jwtVerify } from 'jose';
 
 export async function middleware(request: NextRequest) {
-    // /admin で始まるページだけを監視
-    if (request.nextUrl.pathname.startsWith('/admin')) {
+    const pathname = request.nextUrl.pathname;
+
+    // 1. Basic認証 (すべての管理画面への "最初の扉")
+    // /admin および /portal で始まるすべてのアクセスを保護
+    if (pathname.startsWith('/admin') || pathname.startsWith('/portal')) {
+        const basicAuth = request.headers.get('authorization');
+
+        if (basicAuth) {
+            const authValue = basicAuth.split(' ')[1];
+            const [user, pwd] = atob(authValue).split(':');
+
+            const validUser = process.env.BASIC_AUTH_USER;
+            const validPass = process.env.BASIC_AUTH_PASSWORD;
+
+            if (user === validUser && pwd === validPass) {
+                // Basic認証通過 -> 次のチェックへ
+            } else {
+                return new NextResponse('Authentication Required', {
+                    status: 401,
+                    headers: { 'WWW-Authenticate': 'Basic realm="Secure Area"' },
+                });
+            }
+        } else {
+            return new NextResponse('Authentication Required', {
+                status: 401,
+                headers: { 'WWW-Authenticate': 'Basic realm="Secure Area"' },
+            });
+        }
+    }
+
+    // 2. Admin Session Token Check (既存の独自ログインシステム)
+    // /admin で始まるページだけを監視 (Basic認証通過後)
+    if (pathname.startsWith('/admin')) {
         const token = request.cookies.get('admin_session')?.value;
         const secret = new TextEncoder().encode(process.env.ADMIN_PASSWORD);
 
@@ -27,5 +58,6 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-    matcher: '/admin/:path*',
+    // /admin と /portal 以下すべてに適用
+    matcher: ['/admin/:path*', '/portal/:path*'],
 };
