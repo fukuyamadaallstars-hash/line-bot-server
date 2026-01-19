@@ -59,7 +59,7 @@ export async function loginTenant(formData: FormData) {
 
     const { data: tenant } = await supabase
         .from('tenants')
-        .select('tenant_id, web_access_password, web_access_enabled')
+        .select('tenant_id, web_access_password, web_access_enabled, locked_until, login_fail_count')
         .eq('tenant_id', tenant_id)
         .single();
 
@@ -67,9 +67,42 @@ export async function loginTenant(formData: FormData) {
         throw new Error('ログインできません（アクセスが無効かIDが間違っています）');
     }
 
-    if (tenant.web_access_password !== password) {
-        throw new Error('パスワードが間違っています');
+    // --- 3) Account Lockout Check ---
+    if (tenant.locked_until && new Date(tenant.locked_until) > new Date()) {
+        const resetTime = new Date(tenant.locked_until).toLocaleTimeString('ja-JP');
+        throw new Error(`アカウントはロックされています。${resetTime} までお待ちください。`);
     }
+
+    // --- 5) Password Verification (Bcrypt + Auto-Upgrade) ---
+    const isMatch = await comparePassword(password, tenant.web_access_password);
+
+    if (!isMatch) {
+        // Increment fail count
+        const newCount = (tenant.login_fail_count || 0) + 1;
+        const updates: any = { login_fail_count: newCount };
+
+        // Lock if threshold reached (10 times)
+        if (newCount >= 10) {
+            const lockUntil = new Date();
+            lockUntil.setMinutes(lockUntil.getMinutes() + 15); // 15 min lock
+            updates.locked_until = lockUntil.toISOString();
+        }
+
+        await supabase.from('tenants').update(updates).eq('tenant_id', tenant_id);
+
+        throw new Error('パスワードが間違っています'); // Don't reveal lock status here to avoid enumeration? Actually user feedback is okay for internal tools.
+    }
+
+    // Login Success -> Reset fail count
+    const postLoginUpdates: any = { login_fail_count: 0, locked_until: null };
+
+    // Auto-upgrade legacy plain password to hash
+    if (!tenant.web_access_password.startsWith('$2a$') && !tenant.web_access_password.startsWith('$2b$')) {
+        const hash = await hashPassword(password);
+        postLoginUpdates.web_access_password = hash;
+    }
+
+    await supabase.from('tenants').update(postLoginUpdates).eq('tenant_id', tenant_id);
 
     // Create Session
     const token = await new SignJWT({ tenant_id: tenant.tenant_id, role: 'tenant_admin' })
@@ -81,6 +114,20 @@ export async function loginTenant(formData: FormData) {
     cookieStore.set('tenant_session', token, { httpOnly: true, secure: true, path: '/' });
 
     redirect('/portal/dashboard');
+}
+
+import * as bcrypt from 'bcryptjs';
+
+async function hashPassword(plain: string): Promise<string> {
+    return await bcrypt.hash(plain, 10);
+}
+
+async function comparePassword(plain: string, hash: string): Promise<boolean> {
+    // Legacy support: if hash doesn't look like bcrypt, compare plain
+    if (!hash.startsWith('$2a$') && !hash.startsWith('$2b$')) {
+        return plain === hash;
+    }
+    return await bcrypt.compare(plain, hash);
 }
 
 export async function logoutTenant() {
