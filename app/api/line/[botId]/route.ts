@@ -679,8 +679,15 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
 
         const userMemo = user.internal_memo ? `\n\n【お客様メモ (スタッフ共有事項)】\n${user.internal_memo}\n※この情報はユーザーには見せず、接客の参考にしてください。` : "";
 
+        // ★ユーザープロフィール（パーソナライズ用）
+        let userProfileText = "";
+        if (user.profile && typeof user.profile === 'object' && Object.keys(user.profile).length > 0) {
+            const profileLines = Object.entries(user.profile).map(([key, value]) => `- ${key}: ${value}`).join("\n");
+            userProfileText = `\n\n【このユーザーのプロフィール / アンケート結果】\n${profileLines}\n※この情報に基づいて、回答のトーンやアドバイス内容を調整してください。`;
+        }
+
         const completionMessages: any[] = [
-            { role: "system", content: `現在の日時は ${now} です。\n` + tenant.system_prompt + contextText + userMemo + (rawKeywords ? `\n\n【重要】現在有効な「担当者呼び出しパスワード」は『${rawKeywords}』です。ユーザーが担当者との会話を希望した場合のみ、「担当者にお繋ぎしますので『${rawKeywords}』と入力してください」と案内してください。` : "") + planInstructions },
+            { role: "system", content: `現在の日時は ${now} です。\n` + tenant.system_prompt + contextText + userMemo + userProfileText + (rawKeywords ? `\n\n【重要】現在有効な「担当者呼び出しパスワード」は『${rawKeywords}』です。ユーザーが担当者との会話を希望した場合のみ、「担当者にお繋ぎしますので『${rawKeywords}』と入力してください」と案内してください。` : "") + planInstructions },
             ...historyMessages,
             { role: "user", content: userMessage }
         ];
