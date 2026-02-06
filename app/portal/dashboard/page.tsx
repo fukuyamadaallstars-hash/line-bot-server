@@ -20,6 +20,7 @@ export default async function DashboardPage() {
             tenant_id, display_name, system_prompt,
             portal_allow_prompt_edit, portal_allow_knowledge_edit,
             line_channel_access_token, line_channel_secret, google_sheet_id,
+            plan, model_option,
             knowledge_base (id, content, category)
         `)
         .eq('tenant_id', session.tenant_id)
@@ -30,7 +31,15 @@ export default async function DashboardPage() {
         redirect('/portal/login');
     }
 
+    // ユーザーリストの取得 (パーソナライズ管理用)
+    const { data: users } = await supabase
+        .from('users')
+        .select('user_id, display_name, internal_memo, profile, status, is_handoff_active, created_at')
+        .eq('tenant_id', session.tenant_id)
+        .order('created_at', { ascending: false })
+        .limit(50);
+
     return (
-        <DashboardClient tenant={tenant} />
+        <DashboardClient tenant={tenant} initialUsers={users || []} />
     );
 }

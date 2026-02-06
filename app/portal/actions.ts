@@ -442,5 +442,45 @@ export async function importKnowledgeFromFile(formData: FormData) {
     revalidatePath('/portal/dashboard');
 }
 
+// --- User Management Actions ---
+
+export async function updateUserProfile(formData: FormData) {
+    const tenant_id = await verifyTenant();
+    const user_id = formData.get('user_id') as string;
+    const internal_memo = formData.get('internal_memo') as string;
+    const profileStr = formData.get('profile') as string;
+
+    if (!user_id) throw new Error('User ID required');
+
+    let profile = {};
+    try {
+        profile = profileStr ? JSON.parse(profileStr) : {};
+    } catch (e) {
+        throw new Error('Invalid JSON format for profile');
+    }
+
+    const { error } = await supabase
+        .from('users')
+        .update({ internal_memo, profile })
+        .eq('tenant_id', tenant_id)
+        .eq('user_id', user_id);
+
+    if (error) throw new Error('Update failed: ' + error.message);
+    revalidatePath('/portal/dashboard');
+}
+
+export async function getUsers(query?: string) {
+    const tenant_id = await verifyTenant();
+    let q = supabase.from('users').select('*').eq('tenant_id', tenant_id).order('created_at', { ascending: false });
+
+    if (query) {
+        q = q.or(`display_name.ilike.%${query}%,user_id.ilike.%${query}%`);
+    }
+
+    const { data, error } = await q.limit(50);
+    if (error) throw new Error('Fetch failed');
+    return data;
+}
+
 
 
