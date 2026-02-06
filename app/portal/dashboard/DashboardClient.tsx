@@ -1,3 +1,5 @@
+'use client';
+
 import { useState, useMemo } from 'react';
 import { updateSystemPrompt, addKnowledge, deleteKnowledge, importKnowledgeFromText, importKnowledgeFromFile, logoutTenant, updateApiSettings, updateUserProfile, getUsers } from '../actions';
 
@@ -11,8 +13,8 @@ export default function DashboardClient({ tenant, initialUsers = [] }: { tenant:
     // 権限チェック
     const canEditPrompt = tenant.portal_allow_prompt_edit === true;
     const canEditKnowledge = tenant.portal_allow_knowledge_edit === true;
-    // ★パーソナライズ管理: Standardプランかつ「特定オプション(ModelA/ModelB等)」がある場合のみ表示
-    const canManageUsers = tenant.plan === 'Standard' && (tenant.model_option === 'ModelA' || tenant.model_option === 'ModelB' || tenant.model_option === 'clone');
+    // ★ユーザー管理: 全テナントで利用可能に変更
+    const canManageUsers = true;
 
     // トークン設定状態のチェック（暗号化されていれば設定済み）
     const hasAccessToken = !!tenant.line_channel_access_token;
