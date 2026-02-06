@@ -158,7 +158,26 @@ async function handleEvent(event: any, lineClient: any, openaiApiKey: string, te
         if (existingLog) return;
 
         let { data: user } = await supabase.from('users').select('*').eq('tenant_id', tenantId).eq('user_id', userId).maybeSingle();
-        if (!user) user = await supabase.from('users').insert({ tenant_id: tenantId, user_id: userId, display_name: 'LINE User' }).select().single();
+        if (!user) {
+            user = (await supabase.from('users').insert({ tenant_id: tenantId, user_id: userId, display_name: 'LINE User' }).select().single()).data;
+        }
+
+        // ★ LINEプロフィールから表示名を取得・更新
+        if (user && (!user.display_name || user.display_name === 'LINE User')) {
+            try {
+                const profile = await lineClient.getProfile(userId);
+                if (profile && profile.displayName) {
+                    await supabase.from('users').update({
+                        display_name: profile.displayName,
+                        line_picture_url: profile.pictureUrl || null
+                    }).eq('tenant_id', tenantId).eq('user_id', userId);
+                    user.display_name = profile.displayName;
+                }
+            } catch (profileError) {
+                console.log(`[Profile] Could not fetch LINE profile for ${userId}:`, profileError);
+            }
+        }
+
         if (user && user.is_handoff_active === true) return;
 
         const rawKeywords = tenant.handoff_keywords || "";
