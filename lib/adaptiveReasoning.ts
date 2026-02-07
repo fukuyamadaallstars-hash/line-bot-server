@@ -245,7 +245,6 @@ Respond ONLY with valid JSON, no explanation.`;
             { role: 'system', content: systemPrompt },
             { role: 'user', content: text.substring(0, 1000) } // Truncate for speed
         ],
-        temperature: 0.1,
         max_completion_tokens: 100
     });
 
