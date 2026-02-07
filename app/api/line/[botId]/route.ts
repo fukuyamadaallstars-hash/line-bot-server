@@ -769,9 +769,10 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
                         model: selectedModel,
                         messages: completionMessages,
                     };
-                    // reasoning_effort を追加 (GPT-5系, miniを除く)
-                    // Error fix: 'gpt-5-mini' does not support 'reasoning' parameter
-                    if (reasoningEffort && selectedModel !== 'gpt-5-mini') {
+                    // reasoning_effort を追加 (Reasoning対応モデルのみ)
+                    // Note: gpt-5-mini, gpt-5.1, gpt-4.1 等は reasoning パラメータ非対応
+                    const supportsReasoning = selectedModel.startsWith('o1') || selectedModel.startsWith('o3');
+                    if (reasoningEffort && supportsReasoning) {
                         completionParams.reasoning = { effort: reasoningEffort };
                     }
                     // Thinking models might not support tools well yet, or take too long, but we include if configured
@@ -861,8 +862,10 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
             messages: completionMessages,
         };
 
-        // reasoning_effort を追加 (GPT-5系 Instantモード等, miniを除く)
-        if (reasoningEffort && selectedModel !== 'gpt-5-mini') {
+        // reasoning_effort を追加 (Reasoning対応モデルのみ: o1, o3系)
+        // Note: gpt-5-mini, gpt-5.1, gpt-4.1 等は reasoning パラメータ非対応
+        const supportsReasoning = selectedModel.startsWith('o1') || selectedModel.startsWith('o3');
+        if (reasoningEffort && supportsReasoning) {
             completionParams.reasoning = { effort: reasoningEffort };
         }
 
