@@ -80,13 +80,15 @@ export async function determineReasoningMode(
     const textHash = crypto.createHash('sha256').update(text).digest('hex').substring(0, 16);
 
     // --- Step 1: Level A Check (Hard Rule - Highest Priority) ---
+    // --- Step 1: Level A Check (Hard Rule - Highest Priority) ---
     const levelAHit = LEVEL_A_PATTERN.test(text);
     if (levelAHit) {
+        const selectedModel = resolveModel(tenantBaseModel, 'safety');
         const logData = buildLogData(textHash, text, hasAttachment, true, false, false, undefined, SCORE_LEVEL_A, 'safety', tenantBaseModel, 'high', Date.now() - startTime);
         return {
-            model: resolveModel(tenantBaseModel, 'safety'),
+            model: selectedModel,
             reasoning_effort: 'high',
-            is_thinking: true,
+            is_thinking: selectedModel !== 'gpt-5-mini',
             mode: 'safety',
             log_data: logData
         };
@@ -120,9 +122,10 @@ export async function determineReasoningMode(
     // 4. 文字数が少ない (10文字以下)
     // 5. 添付ファイルなし
     if (!levelBHit && !leadHit && text.length <= 10 && !hasAttachment) {
+        const selectedModel = resolveModel(tenantBaseModel, 'instant');
         const logData = buildLogData(textHash, text, hasAttachment, false, false, false, undefined, step2Score, 'instant', tenantBaseModel, 'minimal', 0);
         return {
-            model: resolveModel(tenantBaseModel, 'instant'),
+            model: selectedModel,
             reasoning_effort: 'minimal',
             is_thinking: false,
             mode: 'instant',
@@ -184,7 +187,7 @@ export async function determineReasoningMode(
     return {
         model,
         reasoning_effort: effort,
-        is_thinking: totalScore >= THRESHOLD_THINKING || totalScore === SCORE_LEVEL_A,
+        is_thinking: (totalScore >= THRESHOLD_THINKING || totalScore === SCORE_LEVEL_A) && model !== 'gpt-5-mini',
         mode,
         suggestion_text: suggestionText,
         log_data: logData
