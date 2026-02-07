@@ -202,7 +202,7 @@ function resolveModel(baseModel: string, mode: ReasoningDecision['mode']): strin
     // GPT-5 mini handling: upgrade for complex queries
     if (baseModel === 'gpt-5-mini') {
         if (mode === 'thinking' || mode === 'professional' || mode === 'safety') {
-            return 'gpt-4.1'; // Upgrade to more capable model for complex/risky queries
+            return 'gpt-5.1'; // Upgrade to more capable model for complex/risky queries
         }
         return 'gpt-5-mini'; // Keep mini for simple queries
     }
