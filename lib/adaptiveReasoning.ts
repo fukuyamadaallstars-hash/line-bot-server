@@ -196,11 +196,15 @@ export async function determineReasoningMode(
 
 /**
  * Resolve the actual model ID based on tenant's base model and decision mode.
+ * For high-score modes (thinking/professional/safety), upgrade to more capable models.
  */
 function resolveModel(baseModel: string, mode: ReasoningDecision['mode']): string {
-    // GPT-5 mini handling
+    // GPT-5 mini handling: upgrade for complex queries
     if (baseModel === 'gpt-5-mini') {
-        return 'gpt-5-mini'; // Same model, effort changes
+        if (mode === 'thinking' || mode === 'professional' || mode === 'safety') {
+            return 'gpt-4.1'; // Upgrade to more capable model for complex/risky queries
+        }
+        return 'gpt-5-mini'; // Keep mini for simple queries
     }
 
     // GPT-5.1 handling
