@@ -162,3 +162,12 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: e.message }, { status: 500 });
     }
 }
+
+// 動作確認用: ブラウザでURLを開いて、エンドポイントが生きているか確認できる
+export async function GET() {
+    return NextResponse.json({ 
+        status: 'OK', 
+        message: 'Stripe Webhook endpoint is active',
+        timestamp: new Date().toISOString()
+    });
+}
