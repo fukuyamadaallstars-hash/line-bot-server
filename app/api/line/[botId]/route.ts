@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import * as line from '@line/bot-sdk';
 import OpenAI from 'openai';
 import { createClient } from '@supabase/supabase-js';
@@ -575,6 +575,15 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
             }
         } // End of Staff Command Handler
 
+        // ★ 未認証ユーザーのブロック (スタッフは除外)
+        if (!user.is_authenticated && !user.is_staff) {
+            const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+            const linkUrl = `${baseUrl}/link/${tenantId}?uid=${userId}`;
+            const unauthMsg = `【未認証です】\nまだ連携が完了していません。\n購入済みの方はこちらから連携してください：\n${linkUrl}\n\n※支払い後なのに使えない方はこちらからお問い合わせください：(サポート窓口)`;
+            await lineClient.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: unauthMsg }] });
+            return;
+        }
+
         const check = checkSensitivy(userMessage, customKeywords);
 
         if (check.found && check.level === 'critical') {
@@ -762,8 +771,8 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
                 messages: [{ type: 'text', text: '🧠 専門知識を元に深く考えています... 少々お待ちください。' }]
             });
 
-            // 2. 非同期処理実行 (本来は waitUntil 等を使うが、関数内で Promise を detach する)
-            (async () => {
+            // 2. Next.js の after() でバックグラウンド処理を安全に実行
+            after(async () => {
                 try {
                     const completionParams: any = {
                         model: selectedModel,
@@ -850,7 +859,7 @@ Token Usage: ${currentTotal} / ${tenant.monthly_token_limit}`;
                     console.error('Async processing failed', e);
                     await lineClient.pushMessage({ to: userId, messages: [{ type: 'text', text: '申し訳ありません。処理中にエラーが発生しました。' }] });
                 }
-            })();
+            });
 
             return; // End Sync Flow
         }
